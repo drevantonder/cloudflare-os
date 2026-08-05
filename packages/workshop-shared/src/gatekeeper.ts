@@ -575,6 +575,11 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   // - Query whether account has scope to access a particular URL.
 }
 
+/** A connected OpenAI Codex account that can mint a short-lived model access token. */
+export interface OpenAiCodexGatekeeperUser extends GatekeeperUser {
+  getAccessToken(): Promise<string>;
+}
+
 // Opaque object representing the capability to verify whether a particular user is able to access
 // a particular Gatekeeper. Minted by `GatekeeperUser`, and then passed to
 // `Gatekeeper.addObserver()` and possibly other future interfaces.

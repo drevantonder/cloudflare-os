@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
-import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
-import { RpcStub } from 'capnweb'
+import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, ConnectedAccountsSubscriber, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
+import { RpcStub, RpcTarget } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 
 interface AddModelModalProps {
@@ -22,6 +22,7 @@ const PROVIDER_LABELS: Record<AiModelProvider, string> = {
   google: 'Google',
   cloudflare: 'Cloudflare Workers AI',
   ollama: 'Ollama',
+  'openai-codex': 'OpenAI Codex',
 }
 
 // Placeholder hinting at the shape of each provider's API token.
@@ -31,6 +32,7 @@ const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
   google: 'AIza...',
   cloudflare: 'Cloudflare API token',
   ollama: '(optional)',
+  'openai-codex': '',
 }
 
 // Example used in the custom-model placeholders for providers that have no suggested models
@@ -66,6 +68,7 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
   const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
 
   for (const provider of providerOrder) {
+    if (gatewayMode && provider === 'openai-codex') continue
     if (enabledProviders && !enabledProviders.has(provider)) continue
 
     // In gateway mode, suggested models are already built-in, so don't list them.
@@ -102,6 +105,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const [apiToken, setApiToken] = useState('')
   const [accountId, setAccountId] = useState('')
   const [apiUrl, setApiUrl] = useState('')
+  const [codexAccounts, setCodexAccounts] = useState<{id: number, name: string}[]>([])
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -128,6 +132,24 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       setAdvancedOpen(false)
     }
   }, [visible])
+
+  useEffect(() => {
+    class Subscriber extends RpcTarget implements ConnectedAccountsSubscriber {
+      add(id: number, description: {displayName?: string, uniqueName?: string}, _vendor: unknown, _resources: unknown[], valid: boolean, vendorId: string) {
+        if (vendorId === 'openai_codex' && valid) setCodexAccounts(items => [...items.filter(item => item.id !== id), {id, name: description.displayName ?? description.uniqueName ?? 'OpenAI Codex'}])
+      }
+      remove(id: number) { setCodexAccounts(items => items.filter(item => item.id !== id)) }
+      ready() {}
+    }
+    const subscriber = new Subscriber()
+    let disposed = false
+    let subscription: { [Symbol.dispose](): void } | undefined
+    authenticatedApi.subscribeConnectedAccounts(subscriber).then(stub => {
+      subscription = stub
+      if (disposed) subscription[Symbol.dispose]()
+    })
+    return () => { disposed = true; subscription?.[Symbol.dispose]() }
+  }, [authenticatedApi])
 
   const handleModelSelect = (value: string) => {
     setSelectValue(value)
@@ -161,11 +183,13 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
     const isOllama = selection?.provider === 'ollama'
     const isCloudflare = selection?.provider === 'cloudflare'
+    const isCodex = selection?.provider === 'openai-codex'
     const showCredentials = !gatewayMode
 
-    if (showCredentials && selection && !isOllama && !apiToken.trim()) {
+    if (showCredentials && selection && !isOllama && !isCodex && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
     }
+    if (showCredentials && isCodex && !accountId.trim()) newErrors.accountId = 'Connect and select an OpenAI Codex account'
 
     if (showCredentials && isCloudflare && !accountId.trim()) {
       newErrors.accountId = 'Please enter your Cloudflare account ID'
@@ -187,10 +211,11 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const isSuggested = selection!.type === 'suggested'
       const finalModelId = isSuggested ? selection!.modelId : modelId.trim()
       const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
+      const isCodex = selection!.provider === 'openai-codex'
 
       const profile: AiChatAuthorInfo = {
         type: 'agent',
-        id: finalModelId,
+        id: isCodex ? `${finalModelId}:codex:${accountId.trim()}` : finalModelId,
         name: finalDisplayName,
       }
 
@@ -198,7 +223,8 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         provider: selection!.provider,
         model: finalModelId,
         apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!gatewayMode && isCodex && accountId.trim() && { codexAccountId: Number(accountId) }),
+        ...(!gatewayMode && !isCodex && accountId.trim() && { accountId: accountId.trim() }),
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
@@ -218,6 +244,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const example = selection ? exampleModel(selection.provider) : null
   const isOllama = selection?.provider === 'ollama'
   const isCloudflare = selection?.provider === 'cloudflare'
+  const isCodex = selection?.provider === 'openai-codex'
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
@@ -307,8 +334,14 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             />
           )}
 
+          {showCredentials && isCodex && (
+            <Select label="OpenAI Codex account" value={accountId || undefined} onValueChange={(v) => { setAccountId(v as string); setErrors(prev => ({ ...prev, accountId: '' })) }} error={errors.accountId} renderValue={(value) => codexAccounts.find(account => String(account.id) === value)?.name ?? 'Select an account'}>
+              {codexAccounts.map(account => <Select.Option key={account.id} value={String(account.id)}>{account.name}</Select.Option>)}
+            </Select>
+          )}
+
           {/* API Token */}
-          {showCredentials && selection && (
+          {showCredentials && selection && !isCodex && (
             <SensitiveInput
               label="API Token"
               placeholder={API_TOKEN_PLACEHOLDERS[selection.provider]}

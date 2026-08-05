@@ -1,6 +1,6 @@
 import { RpcStub } from "capnweb";
 import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, OpenAiCodexGatekeeperUser, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -61,6 +61,7 @@ function areCredentialsValid(record: ConnectedAccountRecord): boolean {
 // Vendor id of the Cloudflare gatekeeper (the suffix of GATEKEEPER_CLOUDFLARE, lowercased). The AI
 // Gateway billing flow is Cloudflare-specific, so several places key off this literal.
 export const CLOUDFLARE_VENDOR_ID = "cloudflare";
+const OPENAI_CODEX_VENDOR_ID = "openai_codex";
 
 export type UserAiModelRecord = {
   profile: AiChatAuthorInfo;
@@ -678,6 +679,10 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         result.aiModel = this.storage.aiModels.get(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
+      result.aiModel = {
+        ...result.aiModel,
+        config: await this.#resolveModelCredentials(result.aiModel.config),
+      };
     }
 
     // Resolve the quick model (used for lightweight tasks like title generation).
@@ -689,11 +694,22 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = quickModel.config;
+          result.quickModel = await this.#resolveModelCredentials(quickModel.config);
         }
       }
     }
     return result;
+  }
+
+  async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
+    if (config.provider !== "openai-codex") return config;
+    if (config.codexAccountId === undefined) throw new Error("This Codex model has no connected account.");
+    const account = this.storage.connectedAccounts.get(config.codexAccountId);
+    if (!account || account.vendorId !== OPENAI_CODEX_VENDOR_ID) {
+      throw new Error("The selected Codex account is no longer connected.");
+    }
+    const codexAccount = account.account as Fetcher<OpenAiCodexGatekeeperUser>;
+    return {...config, apiToken: await codexAccount.getAccessToken()};
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {
@@ -1411,9 +1427,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       }
 
       let credentialsValid = areCredentialsValid(record);
+      let description = record.description;
+      if (record.vendorId === OPENAI_CODEX_VENDOR_ID) {
+        description = await record.account.describe();
+      }
 
       seenIds.add(record.id);
-      subscriber.add(record.id, record.description, vendorDescription,
+      subscriber.add(record.id, description, vendorDescription,
           supportedResources, credentialsValid, record.vendorId).catch(unsubscribe)
     }
 

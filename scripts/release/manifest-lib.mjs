@@ -46,6 +46,7 @@ const NO_DEFAULT_CRED_INPUTS = new Set([
   "gatekeeper-scheduler",     // auto-provisioned; no third-party OAuth app
   "gatekeeper-mcp",           // MCP OAuth uses dynamic client registration, not a static app
   "gatekeeper-mcp-portal",    // same MCP OAuth chain as gatekeeper-mcp
+  "gatekeeper-openai-codex",  // uses the public Codex device-flow client
 ]);
 
 // Not installable on customer instances: Email Routing needs a zone, which workers.dev-hosted

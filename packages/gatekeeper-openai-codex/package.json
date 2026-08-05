@@ -1,0 +1,9 @@
+{
+  "name": "@gadgets/openai-codex-gatekeeper",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/codex.ts",
+  "scripts": { "build": "tsc", "types:check": "tsc --noEmit" },
+  "dependencies": { "@gadgets/workshop-shared": "workspace:*", "capnweb": "^0.8.0", "capnweb-validate": "0.2.1" },
+  "devDependencies": { "typescript": "^5.9.3", "wrangler": "^4.115.0" }
+}

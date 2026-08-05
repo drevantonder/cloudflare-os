@@ -661,6 +661,42 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/notion"
       }
     },
+    "gatekeeper-openai-codex": {
+      "bindings": [],
+      "compatibilityDate": "2026-02-02",
+      "compatibilityFlags": [
+        "allow_irrevocable_stub_storage",
+        "nodejs_compat"
+      ],
+      "inputs": [],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "codex.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "CodexAccount"
+          ],
+          "tag": "v0"
+        }
+      ],
+      "modules": [
+        {
+          "name": "codex.js",
+          "r2Key": "blobs/modules/e98500efab07be53c5e10d3397f88c67aa0974aa2ee225148b905c47e77a1999",
+          "sha256": "e98500efab07be53c5e10d3397f88c67aa0974aa2ee225148b905c47e77a1999",
+          "size": 64,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": false
+      },
+      "shortName": "openai-codex",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/openai-codex"
+      }
+    },
     "gatekeeper-scheduler": {
       "bindings": [],
       "compatibilityDate": "2026-02-02",
