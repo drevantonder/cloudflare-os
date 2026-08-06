@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { AiChatAuthorInfo, AiModelConfig } from "@gadgets/workshop-shared/api";
 import { getModel, type ModelHandle } from "../src/ai-models.js";
 
@@ -371,29 +371,24 @@ describe("OpenAI Codex request authentication", () => {
     capturedRequests.length = 0;
   });
 
-  it("resolves account auth only when a stream starts", async () => {
-    const resolveApiKey = vi.fn(async () =>
-      `header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature-${resolveApiKey.mock.calls.length}`);
+  it("uses the transient account token", async () => {
+    const apiToken =
+      "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature";
     const handle = getModel(env({CF_AI_GATEWAY: undefined}), {
       provider: "openai-codex",
       model: "gpt-5.6-sol",
-      apiToken: "",
+      apiToken,
       connectedAccountId: 7,
-    }, INITIATOR, {resolveApiKey});
-
-    expect(resolveApiKey).not.toHaveBeenCalled();
+    }, INITIATOR);
 
     await captureRequest(handle);
-    await captureRequest(handle);
 
-    expect(resolveApiKey).toHaveBeenCalledTimes(2);
-    expect(capturedRequests).toHaveLength(2);
+    expect(capturedRequests).toHaveLength(1);
     expect(capturedRequests[0].url).toBe("https://chatgpt.com/backend-api/codex/responses");
-    expect(capturedRequests[0].headers.get("authorization")).toContain("Bearer header.");
-    expect(capturedRequests[0].headers.get("authorization")).not.toBe(capturedRequests[1].headers.get("authorization"));
+    expect(capturedRequests[0].headers.get("authorization")).toBe(`Bearer ${apiToken}`);
   });
 
-  it("requires a request-time account resolver", () => {
+  it("requires a transient account token", () => {
     expect(() => getModel(env({CF_AI_GATEWAY: undefined}), {
       provider: "openai-codex",
       model: "gpt-5.6-sol",

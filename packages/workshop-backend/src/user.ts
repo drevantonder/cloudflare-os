@@ -12,7 +12,6 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
-import type { LanguageModelGatekeeperProps } from "./ai-models.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -680,6 +679,10 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         result.aiModel = this.storage.aiModels.get(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
+      result.aiModel = {
+        ...result.aiModel,
+        config: await this.#resolveModelCredentials(result.aiModel.config),
+      };
     }
 
     // Resolve the quick model (used for lightweight tasks like title generation).
@@ -691,35 +694,23 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = quickModel.config;
+          result.quickModel = await this.#resolveModelCredentials(quickModel.config);
         }
       }
     }
     return result;
   }
 
-  async getModelApiKey(accountId: number, vendorId: string): Promise<string> {
-    const account = this.storage.connectedAccounts.get(accountId);
-    if (!account || account.vendorId !== vendorId) {
+  async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
+    if (config.provider !== "openai-codex" || config.connectedAccountId === undefined) {
+      return config;
+    }
+    const account = this.storage.connectedAccounts.get(config.connectedAccountId);
+    if (!account || account.vendorId !== "openai-codex") {
       throw new Error("The selected model account is no longer connected.");
     }
-    return await (account.account as unknown as ModelApiKeyAccountStub).getModelApiKey();
-  }
-
-  // Model gatekeepers are created by the user who owns their selected account. This keeps the
-  // owner's DO identity at the account boundary instead of making callers carry it in props.
-  async createAiModelGatekeeper(modelId: string, gadgetId: string, gadgetName: string) {
-    const chatContext = await this.getChatContext(modelId);
-    const aiModel = chatContext.aiModel;
-    if (!aiModel) throw new Error(`No such model: ${modelId}`);
-    const props: LanguageModelGatekeeperProps = {
-      displayName: aiModel.profile.name,
-      config: aiModel.config,
-      initiator: { type: "gadget", id: chatContext.profile.id, name: gadgetName },
-      metadata: { source: "model-binding", gadgetId },
-      userId: this.ctx.id.toString(),
-    };
-    return { aiModel, class: this.ctx.exports.LanguageModelGatekeeper({props}) };
+    const apiToken = await (account.account as unknown as ModelApiKeyAccountStub).getModelApiKey();
+    return {...config, apiToken};
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {

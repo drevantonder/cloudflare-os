@@ -8,7 +8,11 @@ import {
 } from "cloudflare:workers";
 import { createTypedStorage, collection, keyString } from "@gadgets/typed-storage";
 import * as Y from "yjs";
-import { getModel, UserGatewayRouting } from "./ai-models";
+import {
+  LanguageModelGatekeeperProps,
+  getModel,
+  UserGatewayRouting,
+} from "./ai-models";
 import { AgentTurnError, completeText } from "./ai-invoke";
 import {
   AiGatewayLogRetryableError,
@@ -44,13 +48,6 @@ import { renderGadgetPdf } from "./browser-export";
 
 const logger = createWorkshopLogger("workshop.overseer");
 export const AGENT_RUNNING_ERROR_MESSAGE = "Agent is running, wait for it to finish.";
-
-function modelApiKeyResolver(user: DurableObjectStub<UserDurableObject>, config: AiModelConfig) {
-  if (config.provider !== "openai-codex" || config.connectedAccountId === undefined) {
-    return undefined;
-  }
-  return () => user.getModelApiKey(config.connectedAccountId!, "openai-codex");
-}
 
 let CODE_MODE_HARNESS =
 `import { WorkerEntrypoint, restore, RpcStub, RpcTarget } from "cloudflare:workers";
@@ -1268,9 +1265,9 @@ class OverseerImpl implements AgentHooks {
   // by replaying the persisted chat log.
   async #resumeAgent(record: ActiveAgentRecord, liveChat: LiveChatContext) {
     let aiModel: UserAiModelRecord | undefined;
-    const initiatorUser = this.users.get(this.users.idFromString(record.initiatorUserId));
     try {
-      let userMeta = await initiatorUser.getChatContext(record.modelId);
+      let user = this.users.get(this.users.idFromString(record.initiatorUserId));
+      let userMeta = await user.getChatContext(record.modelId);
       aiModel = userMeta.aiModel;
     } catch (err) {
       this.logger.error("error resolving model while resuming agent", {
@@ -1298,8 +1295,7 @@ class OverseerImpl implements AgentHooks {
     }
 
     await this.#runAgentTurn(
-        record.chatId, aiModel, record.initiator, initiatorUser,
-        record.callbackInitiated, liveChat);
+        record.chatId, aiModel, record.initiator, record.callbackInitiated, liveChat);
   }
 
   constructor(public ctx: DurableObjectState, public env: Cloudflare.Env) {
@@ -3479,8 +3475,7 @@ class OverseerImpl implements AgentHooks {
       let titleMessage = prepared.message?.trim() || prepared.slashCommand?.args.trim() ||
         prepared.skillName || (prepared.slashCommand ? "Slash command" : "") ||
         `[user attached ${canonicalAttachments?.length ?? 0} attachment(s)]`;
-      this.generateThreadTitle(
-          chatId, titleMessage, userMeta.quickModel, userMeta.profile, clientUser);
+      this.generateThreadTitle(chatId, titleMessage, userMeta.quickModel, userMeta.profile);
     }
 
     this.recordGadgetAnalytics({
@@ -3849,15 +3844,12 @@ class OverseerImpl implements AgentHooks {
     });
 
     let liveChat = this.#getLiveChat(chatId);
-    const initiatorUser = this.users.get(this.users.idFromString(initiatorUserId));
-    let turn = this.#runAgentTurn(
-        chatId, aiModel, initiator, initiatorUser, callbackInitiated, liveChat);
+    let turn = this.#runAgentTurn(chatId, aiModel, initiator, callbackInitiated, liveChat);
     if (keepAlive) this.ctx.waitUntil(turn);
   }
 
   #runAgentTurn(chatId: number, aiModel: UserAiModelRecord,
                 initiator: AiChatAuthorInfo,
-                initiatorUser: DurableObjectStub<UserDurableObject>,
                 callbackInitiated: boolean,
                 liveChat: LiveChatContext): Promise<void> {
     return obsContext.with({
@@ -3866,12 +3858,11 @@ class OverseerImpl implements AgentHooks {
       chatId,
       modelId: aiModel.profile.id,
     }, () => this.#runAgentTurnWithContext(
-        chatId, aiModel, initiator, initiatorUser, callbackInitiated, liveChat));
+        chatId, aiModel, initiator, callbackInitiated, liveChat));
   }
 
   async #runAgentTurnWithContext(chatId: number, aiModel: UserAiModelRecord,
                                  initiator: AiChatAuthorInfo,
-                                 initiatorUser: DurableObjectStub<UserDurableObject>,
                                  callbackInitiated: boolean,
                                  liveChat: LiveChatContext): Promise<void> {
     // When this turn is billed to the user's own Cloudflare account, we refresh their cached credit
@@ -3929,7 +3920,6 @@ class OverseerImpl implements AgentHooks {
             sessionAffinity,
             userGateway: byokRouting,
             metadata: { source: "chat", gadgetId: this.ctx.id.toString(), chatId },
-            resolveApiKey: modelApiKeyResolver(initiatorUser, aiModel.config),
           });
 
       let controller = liveChat.cancelController;
@@ -4480,12 +4470,9 @@ class OverseerImpl implements AgentHooks {
   // fall back to a deterministic name.
   async generateBindingName(
       subject: string, takenNames: Set<string>,
-      quick: {config: AiModelConfig, initiator: AiChatAuthorInfo,
-              user: DurableObjectStub<UserDurableObject>}): Promise<string | undefined> {
+      quick: {config: AiModelConfig, initiator: AiChatAuthorInfo}): Promise<string | undefined> {
     try {
-      let model = getModel(this.env, quick.config, quick.initiator, {
-        resolveApiKey: modelApiKeyResolver(quick.user, quick.config),
-      });
+      let model = getModel(this.env, quick.config, quick.initiator);
       let result = await completeText(model, {
         signal: AbortSignal.timeout(10_000),
         prompt:
@@ -4518,18 +4505,12 @@ class OverseerImpl implements AgentHooks {
   // Returns undefined when no quick model is configured (callers fall back to deterministic
   // names).
   async #getNamingQuickModel()
-      : Promise<{config: AiModelConfig, initiator: AiChatAuthorInfo,
-                 user: DurableObjectStub<UserDurableObject>} | undefined> {
+      : Promise<{config: AiModelConfig, initiator: AiChatAuthorInfo} | undefined> {
     if (!this.ownerId) return undefined;
     try {
-      const user = this.#ownerUserDo();
-      let userMeta = await user.getChatContext(null);
+      let userMeta = await this.#ownerUserDo().getChatContext(null);
       return userMeta.quickModel
-          ? {
-            config: userMeta.quickModel,
-            initiator: userMeta.profile,
-            user,
-          }
+          ? {config: userMeta.quickModel, initiator: userMeta.profile}
           : undefined;
     } catch (err) {
       this.logger.warn("failed to resolve quick model for binding naming", {
@@ -5161,12 +5142,10 @@ class OverseerImpl implements AgentHooks {
   // Auto-generate a title for the given
   async generateThreadTitle(chatId: number, initialMessage: string,
                             modelConfig: AiModelConfig,
-                            initiator: AiChatAuthorInfo,
-                            user: DurableObjectStub<UserDurableObject>): Promise<void> {
+                            initiator: AiChatAuthorInfo): Promise<void> {
     try {
       let model = getModel(this.env, modelConfig, initiator, {
         metadata: { source: "thread-title", gadgetId: this.ctx.id.toString(), chatId },
-        resolveApiKey: modelApiKeyResolver(user, modelConfig),
       });
 
       let result = await completeText(model, {
@@ -5212,8 +5191,7 @@ class OverseerImpl implements AgentHooks {
 
   // Generate a title for the whole gadget, called only after code starts being written.
   async generateGadgetTitle(chatId: number, modelConfig: AiModelConfig,
-                            initiator: AiChatAuthorInfo,
-                            user: DurableObjectStub<UserDurableObject>) {
+                            initiator: AiChatAuthorInfo) {
     try {
       let parts: string[] = [];
 
@@ -5225,7 +5203,6 @@ class OverseerImpl implements AgentHooks {
 
       let model = getModel(this.env, modelConfig, initiator, {
         metadata: { source: "gadget-title", gadgetId: this.ctx.id.toString(), chatId },
-        resolveApiKey: modelApiKeyResolver(user, modelConfig),
       });
 
       let gadgetTitle = await completeText(model, {
@@ -7289,11 +7266,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
       let userMeta = await this.clientUser.getChatContext(null);
       if (userMeta.quickModel) {
         bindingName = await this.impl.generateBindingName(
-            title, taken, {
-              config: userMeta.quickModel,
-              initiator: userMeta.profile,
-              user: this.clientUser,
-            });
+            title, taken, {config: userMeta.quickModel, initiator: userMeta.profile});
       }
       bindingName ??= fallbackBindingName("GADGET", name => taken.has(name));
     } else if (chatNames?.has(bindingName)) {
@@ -7487,17 +7460,30 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
   }
 
   async newAiModelGatekeeper(modelId: string): Promise<GatekeeperClient<any>> {
-    const {aiModel, class: cls} = await this.clientUser.createAiModelGatekeeper(
-        modelId, this.impl.ctx.id.toString(), this.impl.storage.title.get());
+    let chatMeta = await this.clientUser.getChatContext(modelId);
+    let config = {...chatMeta.aiModel!.config, apiToken: ""};
+    let props: LanguageModelGatekeeperProps = {
+      displayName: chatMeta.aiModel!.profile.name,
+      config,
+      initiator: {
+        type: "gadget",
+        id: chatMeta.profile.id,
+        name: this.impl.storage.title.get(),
+      },
+      metadata: { source: "model-binding", gadgetId: this.impl.ctx.id.toString() },
+      userId: this.clientUser.id.toString(),
+      modelId,
+    }
 
     let creationSpec: GatekeeperCreationSpec = {
       type: "aiModel",
       modelId,
-      provider: aiModel.config.provider,
-      modelName: aiModel.config.model,
+      provider: chatMeta.aiModel!.config.provider,
+      modelName: chatMeta.aiModel!.config.model,
     };
 
-    let result = await this.impl.addGatekeeper(cls, creationSpec);
+    let result = await this.impl.addGatekeeper(
+        this.impl.ctx.exports.LanguageModelGatekeeper({props}), creationSpec);
     await this.recordConnectionCreated(result, "ai_model");
     return result;
   }
@@ -8317,8 +8303,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     // code -- creations/binding additions only -- doesn't count: it writes no code version, so
     // the first *code* merge after it still sees isFirstChange and generates the title then.)
     if (isFirstChange && codeUpdates.length > 0 && userMeta.quickModel) {
-      this.impl.generateGadgetTitle(
-          chatId, userMeta.quickModel, userMeta.profile, this.clientUser);
+      this.impl.generateGadgetTitle(chatId, userMeta.quickModel, userMeta.profile);
     }
     this.impl.recordGadgetAnalytics({
       event_name: "gadget_interaction",
