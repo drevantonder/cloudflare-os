@@ -350,10 +350,9 @@ function makeHandle(args: HandleArgs): ModelHandle {
 export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          initiator: AiChatAuthorInfo,
                          options: ModelRoutingOptions = {}): ModelHandle {
-  // Connected model-provider credentials authorize the provider directly. They must never be
-  // routed through AI Gateway, which only understands its own stored or BYOK credentials.
+  // Codex currently uses its direct SSE route through the optional egress binding.
   if (config.provider === "openai-codex") {
-    return getModelDirect(env, config, options.sessionAffinity);
+    return getOpenAICodexModel(env, config, options.sessionAffinity);
   }
 
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
@@ -372,7 +371,7 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
     return getModelViaGateway(gwConfig, config, initiator, options);
   }
 
-  return getModelDirect(env, config, options.sessionAffinity);
+  return getModelDirect(config, options.sessionAffinity);
 }
 
 // Route inference through the user's own account (unified billing) via their account's default AI
@@ -489,9 +488,22 @@ function getModelViaGateway(
   });
 }
 
+function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
+                             sessionAffinity?: string): ModelHandle {
+  if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
+  const model = catalogModel(config.provider, config.model);
+  if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
+  return makeHandle({
+    model,
+    apiKey: config.apiToken,
+    fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
+    transport: "sse",
+    sessionAffinity,
+  });
+}
+
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
-function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
-                        sessionAffinity?: string): ModelHandle {
+function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelHandle {
   const catalog = catalogModel(config.provider, config.model);
   const window = modelTokenWindow(config, catalog);
   switch (config.provider) {
@@ -555,16 +567,6 @@ function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
           thinkingLevelMap: catalog?.thinkingLevelMap,
         },
         apiKey: config.apiToken,
-        sessionAffinity,
-      });
-    case "openai-codex":
-      if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
-      if (!catalog) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
-      return makeHandle({
-        model: catalog,
-        apiKey: config.apiToken,
-        fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
-        transport: "sse",
         sessionAffinity,
       });
     case "ollama":
