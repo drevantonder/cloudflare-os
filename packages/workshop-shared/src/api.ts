@@ -939,12 +939,9 @@ export type AiModelConfig = {
   // Secret API token for the respective provider, for billing purposes.
   apiToken: string;
 
-  // Cloudflare account ID owning the Workers AI deployment the token authorizes. Required for
-  // provider "cloudflare" (whose REST endpoint is account-scoped); unused for other providers.
+  // Provider-specific account ID. For Cloudflare this identifies the Workers AI account; for
+  // OpenAI Codex this identifies the connected Gatekeeper account supplying request credentials.
   accountId?: string;
-
-  // Connected account that supplies request authentication at inference time.
-  connectedAccountId?: number;
 
   // URL of the API. If not specified, use the default for the provider. Overriding the URL is
   // useful in order to use AI proxy products like Cloudflare's AI gateway, or even to use an

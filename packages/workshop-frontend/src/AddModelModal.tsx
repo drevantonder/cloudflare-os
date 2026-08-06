@@ -65,7 +65,7 @@ function decodeSelection(value: string): SelectionType {
 
 // Build the flat list of options for the Select dropdown.
 function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null) {
-  const options: { value: string; label: string; provider: AiModelProvider }[] = []
+  const options: { value: string; label: string; provider: string }[] = []
   const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
 
   for (const provider of providerOrder) {
@@ -207,8 +207,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         provider: selection!.provider,
         model: finalModelId,
         apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && isOpenAICodex && accountId.trim() && { connectedAccountId: Number(accountId) }),
-        ...(!gatewayMode && !isOpenAICodex && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!gatewayMode && accountId.trim() && { accountId: accountId.trim() }),
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
@@ -232,7 +231,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
-  const groupedOptions: { provider: AiModelProvider; items: typeof options }[] = []
+  const groupedOptions: { provider: string; items: typeof options }[] = []
   for (const opt of options) {
     const last = groupedOptions[groupedOptions.length - 1]
     if (last && last.provider === opt.provider) {
@@ -269,7 +268,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
                   <div className="h-px bg-kumo-line my-1 mx-2" />
                 )}
                 <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle select-none">
-                  {PROVIDER_LABELS[group.provider]}
+                  {PROVIDER_LABELS[group.provider as AiModelProvider] || group.provider}
                 </div>
                 {group.items.map(opt => (
                   <Select.Option key={opt.value} value={opt.value}>

@@ -702,10 +702,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   }
 
   async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
-    if (config.provider !== "openai-codex" || config.connectedAccountId === undefined) {
+    if (config.provider !== "openai-codex") {
       return config;
     }
-    const account = this.storage.connectedAccounts.get(config.connectedAccountId);
+    const accountId = Number(config.accountId);
+    const account = Number.isInteger(accountId)
+      ? this.storage.connectedAccounts.get(accountId)
+      : undefined;
     if (!account || account.vendorId !== "openai-codex") {
       throw new Error("The selected model account is no longer connected.");
     }

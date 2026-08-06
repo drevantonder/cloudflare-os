@@ -378,7 +378,7 @@ describe("OpenAI Codex request authentication", () => {
       provider: "openai-codex",
       model: "gpt-5.6-sol",
       apiToken,
-      connectedAccountId: 7,
+      accountId: "7",
     }, INITIATOR);
 
     await captureRequest(handle);
@@ -393,7 +393,7 @@ describe("OpenAI Codex request authentication", () => {
       provider: "openai-codex",
       model: "gpt-5.6-sol",
       apiToken: "",
-      connectedAccountId: 7,
+      accountId: "7",
     }, INITIATOR)).toThrow("selected OpenAI Codex account");
   });
 });

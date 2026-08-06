@@ -491,7 +491,7 @@ function getModelViaGateway(
 
 function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
                              sessionAffinity?: string): ModelHandle {
-  if (config.connectedAccountId === undefined || !config.apiToken) {
+  if (!config.accountId || !config.apiToken) {
     throw new Error("The selected OpenAI Codex account is no longer connected.");
   }
   const model = catalogModel(config.provider, config.model);
