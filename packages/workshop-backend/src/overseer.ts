@@ -7461,18 +7461,15 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
 
   async newAiModelGatekeeper(modelId: string): Promise<GatekeeperClient<any>> {
     let chatMeta = await this.clientUser.getChatContext(modelId);
-    let config = {...chatMeta.aiModel!.config, apiToken: ""};
     let props: LanguageModelGatekeeperProps = {
       displayName: chatMeta.aiModel!.profile.name,
-      config,
+      config: chatMeta.aiModel!.config,
       initiator: {
         type: "gadget",
         id: chatMeta.profile.id,
         name: this.impl.storage.title.get(),
       },
       metadata: { source: "model-binding", gadgetId: this.impl.ctx.id.toString() },
-      userId: this.clientUser.id.toString(),
-      modelId,
     }
 
     let creationSpec: GatekeeperCreationSpec = {

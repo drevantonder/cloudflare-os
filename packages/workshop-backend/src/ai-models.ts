@@ -642,8 +642,6 @@ export type LanguageModelGatekeeperProps = {
   config: AiModelConfig,
   initiator: AiChatAuthorInfo,
   metadata?: GatewayMetadataContext,
-  userId: string,
-  modelId: string,
 };
 
 export class LanguageModelGatekeeper
@@ -677,10 +675,9 @@ export class LanguageModelGatekeeper
   async startSession(approvalQueue: RpcStub<ApprovalQueue>)
       : Promise<LanguageModelBinding> {
     const user = this.ctx.exports.UserDurableObject.get(
-        this.ctx.exports.UserDurableObject.idFromString(this.ctx.props.userId));
-    const context = await user.getChatContext(this.ctx.props.modelId);
-    if (!context.aiModel) throw new Error(`No such model: ${this.ctx.props.modelId}`);
-    let model = getModel(this.env, context.aiModel.config, this.ctx.props.initiator, {
+        this.ctx.exports.UserDurableObject.idFromName(this.ctx.props.initiator.id));
+    const config = await user.resolveModelCredentials(this.ctx.props.config);
+    let model = getModel(this.env, config, this.ctx.props.initiator, {
       metadata: this.ctx.props.metadata,
     });
     return new LanguageModelBindingImpl(model);

@@ -681,7 +681,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
       result.aiModel = {
         ...result.aiModel,
-        config: await this.#resolveModelCredentials(result.aiModel.config),
+        config: await this.resolveModelCredentials(result.aiModel.config),
       };
     }
 
@@ -694,14 +694,14 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = await this.#resolveModelCredentials(quickModel.config);
+          result.quickModel = await this.resolveModelCredentials(quickModel.config);
         }
       }
     }
     return result;
   }
 
-  async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
+  async resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
     if (config.provider !== "openai-codex") {
       return config;
     }
