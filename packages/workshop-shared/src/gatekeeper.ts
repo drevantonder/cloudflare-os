@@ -17,7 +17,6 @@
 // `Adapter` type is the root interface implemented by the service binding.
 
 import type { WorkerEntrypoint, DurableObject, RpcTarget, RpcStub } from "cloudflare:workers";
-import type { ModelAuth } from "@earendil-works/pi-ai";
 
 /**
  * A pagination cursor.
@@ -576,10 +575,10 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   // - Query whether account has scope to access a particular URL.
 }
 
-/** Narrow request-auth capability implemented by accounts that back AI models. */
-export interface ModelAuthAccount extends WorkerEntrypoint {
-  /** Resolve request authentication immediately before an inference request starts. */
-  getModelAuth(): Promise<ModelAuth>;
+/** Narrow API-key capability implemented by accounts that back AI models. */
+export interface ModelApiKeyAccount extends WorkerEntrypoint {
+  /** Resolve the provider API key immediately before an inference request starts. */
+  getModelApiKey(): Promise<string>;
 }
 
 // Opaque object representing the capability to verify whether a particular user is able to access

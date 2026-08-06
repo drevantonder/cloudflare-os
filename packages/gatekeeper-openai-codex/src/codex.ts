@@ -1,6 +1,5 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import type { ModelAuth } from "@earendil-works/pi-ai";
-import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelAuthAccount, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
+import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelApiKeyAccount, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
 import { tokensChanged, type CodexTokens } from "./token-refresh.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -135,7 +134,7 @@ export class CodexAccount extends DurableObject<Env> {
 }
 
 export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props>
-    implements GatekeeperUser, ModelAuthAccount {
+    implements GatekeeperUser, ModelApiKeyAccount {
   #account() { return this.ctx.exports.CodexAccount.get(this.ctx.exports.CodexAccount.idFromString(this.ctx.props.accountObjectId)); }
   async describe(): Promise<AccountDescription> {
     const account = this.#account();
@@ -143,8 +142,7 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props>
     const identity = getChatGptIdentity(tokens.access, tokens.id);
     return {displayName: accountLabel(identity), uniqueName: identity.accountId ?? this.ctx.props.accountObjectId, avatar:{url:"https://openai.com/favicon.ico"}};
   }
-  async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
-  async getModelAuth(): Promise<ModelAuth> { return {apiKey: await this.getAccessToken()}; }
+  async getModelApiKey(): Promise<string> { return this.#account().getAccessToken(); }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }
   async startResourceConfigurator(_resource:string): Promise<ResourceConfiguratorFrame> { throw new Error("Codex accounts do not provide resources."); }

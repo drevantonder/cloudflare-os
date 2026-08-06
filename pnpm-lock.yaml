@@ -461,9 +461,6 @@ importers:
 
   packages/gatekeeper-openai-codex:
     dependencies:
-      '@earendil-works/pi-ai':
-        specifier: 0.83.0
-        version: 0.83.0(supports-color@10.2.2)(ws@8.21.1)(zod@4.4.3)
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared
@@ -882,9 +879,6 @@ importers:
 
   packages/workshop-shared:
     dependencies:
-      '@earendil-works/pi-ai':
-        specifier: 0.83.0
-        version: 0.83.0(supports-color@10.2.2)(ws@8.21.1)(zod@4.4.3)
       '@cloudflare/workers-types':
         specifier: ^4.20260702.1
         version: 4.20260702.1
