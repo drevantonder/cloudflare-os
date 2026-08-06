@@ -366,6 +366,39 @@ describe("getModel direct routing (no gateway)", () => {
   });
 });
 
+describe("OpenAI Codex request authentication", () => {
+  beforeEach(() => {
+    capturedRequests.length = 0;
+  });
+
+  it("uses the transient account token", async () => {
+    const apiToken =
+      "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature";
+    const handle = getModel(env({CF_AI_GATEWAY: undefined}), {
+      provider: "openai-codex",
+      model: "gpt-5.6-sol",
+      apiToken,
+      accountId: "7",
+    }, INITIATOR);
+
+    await captureRequest(handle);
+
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0].url).toBe("https://chatgpt.com/backend-api/codex/responses");
+    expect(capturedRequests[0].headers.get("authorization")).toBe(`Bearer ${apiToken}`);
+  });
+
+  it("requires a transient account token", () => {
+    expect(() => getModel(env({CF_AI_GATEWAY: undefined}), {
+      provider: "openai-codex",
+      model: "gpt-5.6-sol",
+      apiToken: "",
+      accountId: "7",
+    }, INITIATOR)).toThrow("selected OpenAI Codex account");
+  });
+
+});
+
 describe("PDF attachment bridging", () => {
   beforeEach(() => {
     capturedRequests.length = 0;

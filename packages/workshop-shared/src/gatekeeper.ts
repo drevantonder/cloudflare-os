@@ -571,6 +571,9 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   // fresh per open (not baked into the account) so admin-gated features reflect current status.
   startAppUi?(context: AppUiContext): Promise<GatekeeperUiFrame>;
 
+  /** Resolve an API key for an AI model request. Present only on model-provider accounts. */
+  getModelApiKey?(): Promise<string>;
+
   // TODO:
   // - Query whether account has scope to access a particular URL.
 }

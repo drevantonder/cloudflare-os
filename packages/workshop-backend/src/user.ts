@@ -678,6 +678,10 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         result.aiModel = this.storage.aiModels.get(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
+      result.aiModel = {
+        ...result.aiModel,
+        config: await this.resolveModelCredentials(result.aiModel.config),
+      };
     }
 
     // Resolve the quick model (used for lightweight tasks like title generation).
@@ -689,11 +693,25 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = quickModel.config;
+          result.quickModel = await this.resolveModelCredentials(quickModel.config);
         }
       }
     }
     return result;
+  }
+
+  async resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
+    if (config.provider !== "openai-codex") {
+      return config;
+    }
+    const account = this.storage.connectedAccounts.get(Number(config.accountId));
+    const getModelApiKey = account?.account.getModelApiKey;
+    if (!account || account.vendorId !== "openai_codex" ||
+        typeof getModelApiKey !== "function") {
+      throw new Error("The selected model account is no longer connected.");
+    }
+    const apiToken = await getModelApiKey();
+    return {...config, apiToken};
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {

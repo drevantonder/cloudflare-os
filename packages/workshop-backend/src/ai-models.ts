@@ -8,10 +8,12 @@ import { stream as anthropicMessagesStream } from "@earendil-works/pi-ai/api/ant
 import { stream as googleGenerativeAiStream } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { stream as openaiCompletionsStream } from "@earendil-works/pi-ai/api/openai-completions";
 import { stream as openaiResponsesStream } from "@earendil-works/pi-ai/api/openai-responses";
+import { stream as openAiCodexResponsesStream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.models";
 import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai.models";
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
+import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
 import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
@@ -20,6 +22,7 @@ import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LI
 import { AiGatewayConfig, getAiGatewayConfig, type AiGatewayLogRoute } from "./ai-gateway.js";
 import { completeText } from "./ai-invoke.js";
 import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
+import { createOpenAICodexFetch } from "./openai-codex.js";
 
  // Routing to bill a user's own Cloudflare account for inference (BYOK path once the free tier is
  // exhausted). Defined here to avoid a backend->ai-gateway-billing type import cycle at runtime.
@@ -111,6 +114,7 @@ const API_STREAMS: Record<string, StreamFunction<Api, SimpleStreamOptions>> = {
   "openai-responses": openaiResponsesStream as StreamFunction<Api, SimpleStreamOptions>,
   "openai-completions": openaiCompletionsStream as StreamFunction<Api, SimpleStreamOptions>,
   "google-generative-ai": googleGenerativeAiStream as StreamFunction<Api, SimpleStreamOptions>,
+  "openai-codex-responses": openAiCodexResponsesStream as StreamFunction<Api, SimpleStreamOptions>,
 };
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -121,6 +125,7 @@ function catalogModel(provider: AiModelConfig["provider"], modelId: string): Mod
   switch (provider) {
     case "anthropic": return (ANTHROPIC_MODELS as Record<string, Model<Api>>)[modelId];
     case "openai": return (OPENAI_MODELS as Record<string, Model<Api>>)[modelId];
+    case "openai-codex": return (OPENAI_CODEX_MODELS as Record<string, Model<Api>>)[modelId];
     case "google": return (GOOGLE_MODELS as Record<string, Model<Api>>)[modelId];
     case "cloudflare": return (CLOUDFLARE_WORKERS_AI_MODELS as Record<string, Model<Api>>)[modelId];
     case "ollama": return undefined;
@@ -257,6 +262,8 @@ type HandleArgs = {
   // (pi does not forward options.metadata to that header itself).
   gatewayMetadata?: GatewayMetadata;
   sessionAffinity?: string;
+  fetch?: typeof globalThis.fetch;
+  transport?: SimpleStreamOptions["transport"];
   aiGatewayLogRoute?: AiGatewayLogRoute;
 };
 
@@ -306,6 +313,8 @@ function makeHandle(args: HandleArgs): ModelHandle {
             ? apiExtras
             : args.model.api === "anthropic-messages" ? { thinkingEnabled: false } : {}),
         ...options,
+        fetch: options.fetch ?? args.fetch,
+        transport: options.transport ?? args.transport,
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         // Session affinity: pi only sends it when caching isn't "none" (fine for us).
@@ -342,6 +351,22 @@ function makeHandle(args: HandleArgs): ModelHandle {
 export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          initiator: AiChatAuthorInfo,
                          options: ModelRoutingOptions = {}): ModelHandle {
+  // Codex currently uses its direct SSE route through the optional egress binding.
+  if (config.provider === "openai-codex") {
+    if (!config.accountId || !config.apiToken) {
+      throw new Error("The selected OpenAI Codex account is no longer connected.");
+    }
+    const model = catalogModel(config.provider, config.model);
+    if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
+    return makeHandle({
+      model,
+      apiKey: config.apiToken,
+      fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
+      transport: "sse",
+      sessionAffinity: options.sessionAffinity,
+    });
+  }
+
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
   // Workers AI), routed through the user's own AI Gateway with unified billing. Honored regardless
   // of whether a platform AI Gateway is configured, so connected users are always billed correctly.
@@ -587,6 +612,8 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
         apiKey: config.apiToken,
         sessionAffinity,
       });
+    case "openai-codex":
+      throw new Error("OpenAI Codex must be resolved through its connected account.");
     default:
       config.provider satisfies never;
       throw new Error(`Unknown provider "${config.provider}".`);
@@ -632,7 +659,10 @@ export class LanguageModelGatekeeper
 
   async startSession(approvalQueue: RpcStub<ApprovalQueue>)
       : Promise<LanguageModelBinding> {
-    let model = getModel(this.env, this.ctx.props.config, this.ctx.props.initiator, {
+    const user = this.ctx.exports.UserDurableObject.get(
+        this.ctx.exports.UserDurableObject.idFromName(this.ctx.props.initiator.id));
+    const config = await user.resolveModelCredentials(this.ctx.props.config);
+    let model = getModel(this.env, config, this.ctx.props.initiator, {
       metadata: this.ctx.props.metadata,
     });
     return new LanguageModelBindingImpl(model);

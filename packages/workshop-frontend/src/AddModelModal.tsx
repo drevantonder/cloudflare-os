@@ -3,6 +3,7 @@ import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToas
 import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
+import { OpenAICodexAccountSelect } from './OpenAICodexAccountSelect'
 
 interface AddModelModalProps {
   visible: boolean
@@ -22,6 +23,7 @@ const PROVIDER_LABELS: Record<AiModelProvider, string> = {
   google: 'Google',
   cloudflare: 'Cloudflare Workers AI',
   ollama: 'Ollama',
+  'openai-codex': 'OpenAI Codex',
 }
 
 // Placeholder hinting at the shape of each provider's API token.
@@ -31,6 +33,7 @@ const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
   google: 'AIza...',
   cloudflare: 'Cloudflare API token',
   ollama: '(optional)',
+  'openai-codex': '',
 }
 
 // Example used in the custom-model placeholders for providers that have no suggested models
@@ -113,6 +116,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const enabledProviders: Set<string> | null = gatewayMode
     ? new Set(aiConfig.enabledProviders)
     : null
+  const isOpenAICodex = selection?.provider === 'openai-codex'
 
   // Reset all state when dialog closes
   useEffect(() => {
@@ -163,9 +167,10 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     const isCloudflare = selection?.provider === 'cloudflare'
     const showCredentials = !gatewayMode
 
-    if (showCredentials && selection && !isOllama && !apiToken.trim()) {
+    if (showCredentials && selection && !isOllama && !isOpenAICodex && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
     }
+    if (showCredentials && isOpenAICodex && !accountId.trim()) newErrors.accountId = 'Connect and select an account'
 
     if (showCredentials && isCloudflare && !accountId.trim()) {
       newErrors.accountId = 'Please enter your Cloudflare account ID'
@@ -307,8 +312,20 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             />
           )}
 
+          {showCredentials && isOpenAICodex && (
+            <OpenAICodexAccountSelect
+              authenticatedApi={authenticatedApi}
+              value={accountId}
+              onValueChange={(value) => {
+                setAccountId(value)
+                setErrors(prev => ({ ...prev, accountId: '' }))
+              }}
+              error={errors.accountId}
+            />
+          )}
+
           {/* API Token */}
-          {showCredentials && selection && (
+          {showCredentials && selection && !isOpenAICodex && (
             <SensitiveInput
               label="API Token"
               placeholder={API_TOKEN_PLACEHOLDERS[selection.provider]}
@@ -340,7 +357,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           )}
 
           {/* Advanced Settings for non-Ollama, non-Cloudflare providers */}
-          {showCredentials && selection && !isOllama && !isCloudflare && (
+          {showCredentials && selection && !isOllama && !isCloudflare && !isOpenAICodex && (
             <Collapsible.Root
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}
