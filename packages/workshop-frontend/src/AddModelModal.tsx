@@ -45,7 +45,7 @@ function exampleModel(provider: AiModelProvider, models: Record<string, ModelCat
 }
 
 // Encode a selection into a string value for the Select component.
-function encodeSelection(provider: AiModelProvider, modelId?: string): string {
+function encodeSelection(provider: string, modelId?: string): string {
   return modelId ? `${provider}:${modelId}` : `other-${provider}`
 }
 

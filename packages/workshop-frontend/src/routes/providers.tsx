@@ -5,7 +5,6 @@ import { useAuthenticatedApi } from '../AuthContext'
 import {
   AiChatAuthorInfo,
   AiGatewayInfo,
-  AiModelProvider,
   SUGGESTED_MODELS,
 } from '@gadgets/workshop-shared/api'
 import {
@@ -23,7 +22,7 @@ export const Route = createFileRoute('/providers')({ component: ProvidersPage })
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const PROVIDER_ORDER = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
+const PROVIDER_ORDER = Object.keys(SUGGESTED_MODELS) as (keyof typeof SUGGESTED_MODELS)[]
 
 const PRIMARY_BTN =
   'press inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-kumo-brand px-3.5 text-[13px] font-medium tracking-[-0.25px] text-white transition-colors hover:bg-kumo-brand-hover'

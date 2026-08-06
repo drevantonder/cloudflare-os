@@ -917,7 +917,8 @@ export type CloudflareAccountOption = {
 };
 
 // Supported AI providers.
-export type AiModelProvider = string;
+export type AiModelProvider = "openai" | "anthropic" | "google" | "cloudflare" | "ollama" |
+  "openai-codex";
 
 // Information about the AI gateway configuration. Returned by `AuthenticatedApi.getAiConfig()`.
 export type AiGatewayInfo = {
@@ -959,7 +960,7 @@ export const WORKERS_AI_OUTPUT_LIMIT = 32768;
 // `outputLimit`, when present, is both the requested response cap and the space reserved for it,
 // leaving the remainder as the prompt budget context compaction sizes against.
 export const SUGGESTED_MODELS: Record<
-  string,
+  Exclude<AiModelProvider, "openai-codex">,
   Record<string, {name: string, contextWindow: number, outputLimit?: number}>
 > = {
   "cloudflare": {

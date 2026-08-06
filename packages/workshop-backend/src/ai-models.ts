@@ -135,7 +135,7 @@ function catalogModel(provider: AiModelConfig["provider"], modelId: string): Mod
 // gaps for models we don't list, and unknown models get conservative defaults.
 function modelTokenWindow(config: AiModelConfig, catalog: Model<Api> | undefined)
     : { contextWindow: number, maxTokens: number } {
-  const suggested = SUGGESTED_MODELS[config.provider]?.[config.model];
+  const suggested = SUGGESTED_MODELS[config.provider as keyof typeof SUGGESTED_MODELS]?.[config.model];
   return {
     contextWindow: suggested?.contextWindow ?? catalog?.contextWindow ?? 128_000,
     maxTokens: suggested?.outputLimit ??
