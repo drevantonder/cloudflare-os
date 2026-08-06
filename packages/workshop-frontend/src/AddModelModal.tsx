@@ -82,13 +82,11 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
       }
     }
 
-    if (provider !== 'openai-codex') {
-      options.push({
-        value: encodeSelection(provider),
-        label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
-        provider,
-      })
-    }
+    options.push({
+      value: encodeSelection(provider),
+      label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
+      provider,
+    })
   }
 
   return options
