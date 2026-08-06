@@ -194,7 +194,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
       const profile: AiChatAuthorInfo = {
         type: 'agent',
-        id: isOpenAICodex ? `${finalModelId}:${selection!.provider}:${accountId.trim()}` : finalModelId,
+        id: finalModelId,
         name: finalDisplayName,
       }
 
