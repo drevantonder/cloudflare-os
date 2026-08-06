@@ -353,7 +353,18 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // Codex currently uses its direct SSE route through the optional egress binding.
   if (config.provider === "openai-codex") {
-    return getOpenAICodexModel(env, config, options.sessionAffinity);
+    if (!config.accountId || !config.apiToken) {
+      throw new Error("The selected OpenAI Codex account is no longer connected.");
+    }
+    const model = catalogModel(config.provider, config.model);
+    if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
+    return makeHandle({
+      model,
+      apiKey: config.apiToken,
+      fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
+      transport: "sse",
+      sessionAffinity: options.sessionAffinity,
+    });
   }
 
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
@@ -486,22 +497,6 @@ function getModelViaGateway(
     gatewayMetadata: metadata,
     sessionAffinity: options.sessionAffinity,
     aiGatewayLogRoute: logRoute(gateway),
-  });
-}
-
-function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
-                             sessionAffinity?: string): ModelHandle {
-  if (!config.accountId || !config.apiToken) {
-    throw new Error("The selected OpenAI Codex account is no longer connected.");
-  }
-  const model = catalogModel(config.provider, config.model);
-  if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
-  return makeHandle({
-    model,
-    apiKey: config.apiToken,
-    fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
-    transport: "sse",
-    sessionAffinity,
   });
 }
 
