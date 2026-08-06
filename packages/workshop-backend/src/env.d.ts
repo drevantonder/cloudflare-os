@@ -23,6 +23,11 @@ declare global {
       // Note: outside gateway mode, Workers AI (provider "cloudflare") is BYOK like every other
       // provider -- the account ID and API token live in the user's model config, not in env.
 
+      // Optional Cloudflare VPC Network binding for ChatGPT Codex inference. Public release
+      // deployments bind this to cf1:network; local and custom deployments may omit it and use
+      // ordinary fetch instead.
+      OPENAI_CODEX_EGRESS?: Fetcher;
+
       // Blueprint storage bindings.
       BLUEPRINTS: KVNamespace;             // Workers KV for blueprint metadata lookup
       BLUEPRINT_CONTENT: R2Bucket;         // R2 bucket for blueprint code snapshots

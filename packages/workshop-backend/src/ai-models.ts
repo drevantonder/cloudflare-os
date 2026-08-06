@@ -118,6 +118,35 @@ const API_STREAMS: Record<string, StreamFunction<Api, SimpleStreamOptions>> = {
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
+const CODEX_CF_WORKER_BLOCK_MESSAGE =
+    "OpenAI Codex rejected this Cloudflare Worker request because Workers add the " +
+    "CF-Worker header. Configure an OPENAI_CODEX_EGRESS VPC Network binding using " +
+    'network_id: "cf1:network", then retry.';
+
+function openAiCodexFetch(egress?: Fetcher): typeof globalThis.fetch {
+  if (egress) {
+    return (input, init) => egress.fetch(new Request(input, init));
+  }
+  return async (input, init) => {
+    const response = await globalThis.fetch(input, init);
+    if (response.status !== 403 ||
+        !response.headers.get("content-type")?.toLowerCase().startsWith("text/html")) {
+      return response;
+    }
+
+    // ChatGPT's edge rejects the CF-Worker identity header before Codex authentication and
+    // returns an HTML block page. Pi otherwise surfaces that page as the model error. Give it the
+    // normal provider-error shape so the user sees an actionable deployment message instead.
+    const headers = new Headers(response.headers);
+    headers.set("content-type", "application/json");
+    headers.delete("content-encoding");
+    headers.delete("content-length");
+    return Response.json({
+      error: { type: "cf_worker_egress_blocked", message: CODEX_CF_WORKER_BLOCK_MESSAGE },
+    }, { status: response.status, statusText: response.statusText, headers });
+  };
+}
+
 // Consult pi's builtin catalog for cost/compat metadata of a known model id. Unknown models are
 // fine (synthesized with zero cost). Import per-provider, not providers/all.
 function catalogModel(provider: AiModelConfig["provider"], modelId: string): Model<Api> | undefined {
@@ -261,6 +290,8 @@ type HandleArgs = {
   // (pi does not forward options.metadata to that header itself).
   gatewayMetadata?: GatewayMetadata;
   sessionAffinity?: string;
+  fetch?: typeof globalThis.fetch;
+  transport?: SimpleStreamOptions["transport"];
   aiGatewayLogRoute?: AiGatewayLogRoute;
 };
 
@@ -311,6 +342,8 @@ function makeHandle(args: HandleArgs): ModelHandle {
             ? apiExtras
             : args.model.api === "anthropic-messages" ? { thinkingEnabled: false } : {}),
         ...options,
+        fetch: options.fetch ?? args.fetch,
+        transport: options.transport ?? args.transport,
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         // Session affinity: pi only sends it when caching isn't "none" (fine for us).
@@ -349,7 +382,9 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // ChatGPT Codex OAuth credentials authorize the Codex backend directly. AI Gateway does not
   // accept this credential type, so it must never route this provider through gateway billing.
-  if (config.provider === "openai-codex") return getModelDirect(config, options.sessionAffinity);
+  if (config.provider === "openai-codex") {
+    return getModelDirect(env, config, options.sessionAffinity);
+  }
 
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
   // Workers AI), routed through the user's own AI Gateway with unified billing. Honored regardless
@@ -367,7 +402,7 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
     return getModelViaGateway(gwConfig, config, initiator, options);
   }
 
-  return getModelDirect(config, options.sessionAffinity);
+  return getModelDirect(env, config, options.sessionAffinity);
 }
 
 // Route inference through the user's own account (unified billing) via their account's default AI
@@ -485,7 +520,8 @@ function getModelViaGateway(
 }
 
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
-function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelHandle {
+function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
+                        sessionAffinity?: string): ModelHandle {
   const catalog = catalogModel(config.provider, config.model);
   const window = modelTokenWindow(config, catalog);
   switch (config.provider) {
@@ -510,6 +546,11 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
       });
     case "openai-codex":
       if (!config.apiToken) throw new Error("This Codex model has no access token.");
+      // A VPC Network fetch avoids the CF-Worker header added to ordinary Worker subrequests.
+      // Keep this Worker integration on Pi's SSE transport: VPC bindings do not carry Pi's
+      // independent WebSocket connection, and the ordinary-fetch fallback needs to inspect the
+      // HTTP 403 response to replace Cloudflare's block page with an actionable error.
+      const codexEgress = env.OPENAI_CODEX_EGRESS;
       return makeHandle({
         model: {
           id: config.model,
@@ -525,6 +566,8 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
           compat: catalog?.compat,
         },
         apiKey: config.apiToken,
+        fetch: openAiCodexFetch(codexEgress),
+        transport: "sse",
         sessionAffinity,
       });
     case "cloudflare": {

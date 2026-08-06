@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiChatAuthorInfo, AiModelConfig } from "@gadgets/workshop-shared/api";
 import { getModel, type ModelHandle } from "../src/ai-models.js";
 
@@ -30,6 +30,14 @@ const WORKERS_AI_CONFIG: AiModelConfig = {
   provider: "cloudflare",
   model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   apiToken: "ignored-in-gateway-mode",
+};
+
+const CODEX_CONFIG: AiModelConfig = {
+  provider: "openai-codex",
+  model: "gpt-5.4",
+  apiToken: `header.${btoa(JSON.stringify({
+    "https://api.openai.com/auth": { chatgpt_account_id: "account-123" },
+  }))}.signature`,
 };
 
 function env(overrides: Partial<Cloudflare.Env> = {}): Cloudflare.Env {
@@ -363,6 +371,91 @@ describe("getModel direct routing (no gateway)", () => {
       }, INITIATOR);
       expect(handle.model.baseUrl).toBe("http://my-ollama:11434/v1");
     }
+  });
+});
+
+describe("OpenAI Codex egress", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the VPC Network binding when it is available", async () => {
+    const calls: string[] = [];
+    const vpcFetch = vi.fn(async (request: Request) => {
+      calls.push(request.url);
+      return Response.json({ error: { message: "vpc transport" } }, { status: 400 });
+    });
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      Response.json({ error: { message: "ordinary transport" } }, { status: 400 })));
+    const handle = getModel(env({
+      CF_AI_GATEWAY: undefined,
+      OPENAI_CODEX_EGRESS: { fetch: vpcFetch },
+    } as Partial<Cloudflare.Env>), CODEX_CONFIG, INITIATOR);
+
+    const stream = handle.stream(handle.model, {
+      messages: [{ role: "user", content: "hello", timestamp: 0 }],
+    }, { maxRetries: 0 });
+    const message = await stream.result();
+
+    expect(message.errorMessage).toBe("vpc transport");
+    expect(calls).toEqual(["https://chatgpt.com/backend-api/codex/responses"]);
+  });
+
+  it("uses ordinary fetch when the VPC Network binding is absent", async () => {
+    const ordinaryFetch = vi.fn(async () =>
+      Response.json({ error: { message: "ordinary transport" } }, { status: 400 }));
+    vi.stubGlobal("fetch", ordinaryFetch);
+    const handle = getModel(
+        env({ CF_AI_GATEWAY: undefined, OPENAI_CODEX_EGRESS: undefined }),
+        CODEX_CONFIG,
+        INITIATOR);
+
+    const stream = handle.stream(handle.model, {
+      messages: [{ role: "user", content: "hello", timestamp: 0 }],
+    }, { maxRetries: 0 });
+    const message = await stream.result();
+
+    expect(message.errorMessage).toBe("ordinary transport");
+    expect(ordinaryFetch).toHaveBeenCalledOnce();
+    expect(new Request(ordinaryFetch.mock.calls[0][0] as RequestInfo).url)
+        .toBe("https://chatgpt.com/backend-api/codex/responses");
+  });
+
+  it("explains the CF-Worker issue when ordinary fetch receives the HTML block page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+        "<!doctype html><title>Blocked</title>",
+        { status: 403, headers: { "content-type": "text/html; charset=UTF-8" } })));
+    const handle = getModel(
+        env({ CF_AI_GATEWAY: undefined, OPENAI_CODEX_EGRESS: undefined }),
+        CODEX_CONFIG,
+        INITIATOR);
+
+    const stream = handle.stream(handle.model, {
+      messages: [{ role: "user", content: "hello", timestamp: 0 }],
+    }, { maxRetries: 0 });
+    const message = await stream.result();
+
+    expect(message.errorMessage).toBe(
+        "OpenAI Codex rejected this Cloudflare Worker request because Workers add the " +
+        "CF-Worker header. Configure an OPENAI_CODEX_EGRESS VPC Network binding using " +
+        'network_id: "cf1:network", then retry.');
+  });
+
+  it("preserves JSON authorization errors from ordinary fetch", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(
+        { error: { message: "Your account cannot use this model." } },
+        { status: 403 })));
+    const handle = getModel(
+        env({ CF_AI_GATEWAY: undefined, OPENAI_CODEX_EGRESS: undefined }),
+        CODEX_CONFIG,
+        INITIATOR);
+
+    const stream = handle.stream(handle.model, {
+      messages: [{ role: "user", content: "hello", timestamp: 0 }],
+    }, { maxRetries: 0 });
+    const message = await stream.result();
+
+    expect(message.errorMessage).toBe("Your account cannot use this model.");
   });
 });
 
