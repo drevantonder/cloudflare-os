@@ -201,6 +201,12 @@ for (const gk of gatekeepers) {
   const config = parse(readFileSync(srcPath, "utf8"));
   config.build = { ...config.build, cwd: gk.dir };
 
+  if (process.env.PUBLIC_BASE_URL) {
+    config.vars = config.vars || {};
+    const origin = process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+    config.vars.BASE_URL = `${origin}/gatekeeper/${gk.name.slice("gatekeeper-".length)}`;
+  }
+
   const shared = SHARED_GATEKEEPER_CREDS[gk.name];
   if (shared && process.env[shared.id] && process.env[shared.secret]) {
     config.vars = config.vars || {};
