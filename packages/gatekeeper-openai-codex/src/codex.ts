@@ -1,6 +1,5 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
-import { OPENAI_CODEX_MODEL_PROVIDER, OPENAI_CODEX_PROVIDER_ID } from "./model-provider.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const USER_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -142,7 +141,7 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements
   }
   async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
   async getModelProviderCredentials(): Promise<{provider: string, apiToken: string}> {
-    return { provider: OPENAI_CODEX_PROVIDER_ID, apiToken: await this.getAccessToken() };
+    return { provider: "openai-codex", apiToken: await this.getAccessToken() };
   }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }

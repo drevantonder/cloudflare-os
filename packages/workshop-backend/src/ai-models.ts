@@ -8,11 +8,12 @@ import { stream as anthropicMessagesStream } from "@earendil-works/pi-ai/api/ant
 import { stream as googleGenerativeAiStream } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { stream as openaiCompletionsStream } from "@earendil-works/pi-ai/api/openai-completions";
 import { stream as openaiResponsesStream } from "@earendil-works/pi-ai/api/openai-responses";
+import { stream as openAiCodexResponsesStream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.models";
 import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai.models";
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
-import { OPENAI_CODEX_MODEL_PROVIDER } from "@gadgets/openai-codex-gatekeeper/model-provider";
+import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
 import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
@@ -21,6 +22,7 @@ import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LI
 import { AiGatewayConfig, getAiGatewayConfig, type AiGatewayLogRoute } from "./ai-gateway.js";
 import { completeText } from "./ai-invoke.js";
 import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
+import { createOpenAICodexFetch } from "./openai-codex.js";
 
  // Routing to bill a user's own Cloudflare account for inference (BYOK path once the free tier is
  // exhausted). Defined here to avoid a backend->ai-gateway-billing type import cycle at runtime.
@@ -112,7 +114,7 @@ const API_STREAMS: Record<string, StreamFunction<Api, SimpleStreamOptions>> = {
   "openai-responses": openaiResponsesStream as StreamFunction<Api, SimpleStreamOptions>,
   "openai-completions": openaiCompletionsStream as StreamFunction<Api, SimpleStreamOptions>,
   "google-generative-ai": googleGenerativeAiStream as StreamFunction<Api, SimpleStreamOptions>,
-  "openai-codex-responses": OPENAI_CODEX_MODEL_PROVIDER.stream,
+  "openai-codex-responses": openAiCodexResponsesStream as StreamFunction<Api, SimpleStreamOptions>,
 };
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -122,6 +124,7 @@ function catalogModel(provider: AiModelConfig["provider"], modelId: string): Mod
   switch (provider) {
     case "anthropic": return (ANTHROPIC_MODELS as Record<string, Model<Api>>)[modelId];
     case "openai": return (OPENAI_MODELS as Record<string, Model<Api>>)[modelId];
+    case "openai-codex": return (OPENAI_CODEX_MODELS as Record<string, Model<Api>>)[modelId];
     case "google": return (GOOGLE_MODELS as Record<string, Model<Api>>)[modelId];
     case "cloudflare": return (CLOUDFLARE_WORKERS_AI_MODELS as Record<string, Model<Api>>)[modelId];
     case "ollama": return undefined;
@@ -489,18 +492,30 @@ function getModelViaGateway(
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
 function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
                         sessionAffinity?: string): ModelHandle {
+  const catalog = catalogModel(config.provider, config.model);
   if (config.provider === "openai-codex") {
     if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
     const egress = env.OPENAI_CODEX_EGRESS;
     return makeHandle({
-      model: OPENAI_CODEX_MODEL_PROVIDER.createModel(config.model),
+      model: {
+        id: config.model,
+        name: catalog?.name ?? config.model,
+        api: "openai-codex-responses",
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        reasoning: catalog?.reasoning ?? true,
+        input: catalog?.input ?? ["text", "image"],
+        cost: catalog?.cost ?? ZERO_COST,
+        ...modelTokenWindow(config, catalog),
+        thinkingLevelMap: catalog?.thinkingLevelMap,
+        compat: catalog?.compat,
+      },
       apiKey: config.apiToken,
-      fetch: OPENAI_CODEX_MODEL_PROVIDER.createFetch(egress),
-      transport: OPENAI_CODEX_MODEL_PROVIDER.transport,
+      fetch: createOpenAICodexFetch(egress),
+      transport: "sse",
       sessionAffinity,
     });
   }
-  const catalog = catalogModel(config.provider, config.model);
   const window = modelTokenWindow(config, catalog);
   switch (config.provider) {
     case "anthropic":
