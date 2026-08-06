@@ -12,6 +12,7 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
+import type { LanguageModelGatekeeperProps } from "./ai-models.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -703,6 +704,22 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       throw new Error("The selected model account is no longer connected.");
     }
     return await (account.account as unknown as ModelAuthAccountStub).getModelAuth();
+  }
+
+  // Model gatekeepers are created by the user who owns their selected account. This keeps the
+  // owner's DO identity at the account boundary instead of making callers carry it in props.
+  async createAiModelGatekeeper(modelId: string, gadgetId: string, gadgetName: string) {
+    const chatContext = await this.getChatContext(modelId);
+    const aiModel = chatContext.aiModel;
+    if (!aiModel) throw new Error(`No such model: ${modelId}`);
+    const props: LanguageModelGatekeeperProps = {
+      displayName: aiModel.profile.name,
+      config: aiModel.config,
+      initiator: { type: "gadget", id: chatContext.profile.id, name: gadgetName },
+      metadata: { source: "model-binding", gadgetId },
+      userId: this.ctx.id.toString(),
+    };
+    return { aiModel, class: this.ctx.exports.LanguageModelGatekeeper({props}) };
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {
