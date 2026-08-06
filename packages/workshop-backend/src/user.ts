@@ -1,6 +1,6 @@
 import { RpcStub } from "capnweb";
 import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, ModelProviderGatekeeperUser, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -12,7 +12,7 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
-import { normalizeDirectModelConfig } from "./ai-models.js";
+import { resolveConnectedModelCredentials } from "./connected-model-credentials.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -702,21 +702,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   }
 
   async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
-    config = normalizeDirectModelConfig(config);
-    if (config.connectedAccountId === undefined) return config;
-    const account = this.storage.connectedAccounts.get(config.connectedAccountId);
-    if (!account) throw new Error("The selected model-provider account is no longer connected.");
-    const vendor = this.vendors.get(account.vendorId);
-    const provider = vendor && await vendor.describe();
-    if (provider?.modelProvider?.id !== config.provider) {
-      throw new Error("The selected account does not provide credentials for this model provider.");
-    }
-    const modelProviderAccount = account.account as Fetcher<ModelProviderGatekeeperUser>;
-    const credentials = await modelProviderAccount.getModelProviderCredentials();
-    if (credentials.provider !== config.provider) {
-      throw new Error("The selected account does not provide credentials for this model provider.");
-    }
-    return {...config, apiToken: credentials.apiToken};
+    return resolveConnectedModelCredentials(
+        config,
+        id => this.storage.connectedAccounts.get(id),
+        id => this.vendors.get(id),
+    );
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {

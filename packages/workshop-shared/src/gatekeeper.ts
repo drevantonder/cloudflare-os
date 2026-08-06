@@ -17,6 +17,7 @@
 // `Adapter` type is the root interface implemented by the service binding.
 
 import type { WorkerEntrypoint, DurableObject, RpcTarget, RpcStub } from "cloudflare:workers";
+import type { ModelProviderDescription } from "./model-provider";
 
 /**
  * A pagination cursor.
@@ -33,14 +34,6 @@ export interface Cursor<T> {
 export type AvatarImage = {
   url: string;
 }
-
-// A model catalog supplied by a connected-account gatekeeper. The Workshop uses this metadata to
-// render its picker; provider-specific request construction stays in the gatekeeper package.
-export type ModelProviderDescription = {
-  id: string;
-  displayName: string;
-  models: Record<string, { name: string; contextWindow: number; outputLimit?: number }>;
-};
 
 // Describes a connected GatekeeperVendor, for display purposes.
 export type VendorDescription = {
@@ -585,11 +578,6 @@ export interface GatekeeperUser extends WorkerEntrypoint {
 
   // TODO:
   // - Query whether account has scope to access a particular URL.
-}
-
-/** A connected account that can mint a short-lived model-provider access token. */
-export interface ModelProviderGatekeeperUser extends GatekeeperUser {
-  getModelProviderCredentials(): Promise<{ provider: string; apiToken: string }>;
 }
 
 // Opaque object representing the capability to verify whether a particular user is able to access

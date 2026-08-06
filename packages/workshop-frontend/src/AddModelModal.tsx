@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
-import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, ConnectedAccountsSubscriber, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
-import { VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
-import { RpcStub, RpcTarget } from 'capnweb'
+import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
+import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
+import { ModelCatalog, useConnectedModelProviders } from './useConnectedModelProviders'
 
 interface AddModelModalProps {
   visible: boolean
@@ -32,13 +32,6 @@ const API_TOKEN_PLACEHOLDERS: Record<string, string> = {
   google: 'AIza...',
   cloudflare: 'Cloudflare API token',
   ollama: '(optional)',
-}
-
-type ModelCatalog = Record<string, {name: string, contextWindow: number, outputLimit?: number}>
-type ConnectedModelProvider = {
-  displayName: string
-  models: ModelCatalog
-  accounts: {id: number, name: string}[]
 }
 
 // Example used in the custom-model placeholders for providers that have no suggested models
@@ -112,7 +105,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const [apiToken, setApiToken] = useState('')
   const [accountId, setAccountId] = useState('')
   const [apiUrl, setApiUrl] = useState('')
-  const [connectedModelProviders, setConnectedModelProviders] = useState<Record<string, ConnectedModelProvider>>({})
+  const connectedModelProviders = useConnectedModelProviders(authenticatedApi)
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -124,6 +117,12 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const enabledProviders: Set<string> | null = gatewayMode
     ? new Set(aiConfig.enabledProviders)
     : null
+  const modelCatalogs: Record<string, ModelCatalog> = {...SUGGESTED_MODELS}
+  const providerLabels: Record<string, string> = {...PROVIDER_LABELS}
+  for (const [id, provider] of Object.entries(connectedModelProviders)) {
+    modelCatalogs[id] = provider.models
+    providerLabels[id] = provider.displayName
+  }
 
   // Reset all state when dialog closes
   useEffect(() => {
@@ -139,42 +138,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       setAdvancedOpen(false)
     }
   }, [visible])
-
-  useEffect(() => {
-    class Subscriber extends RpcTarget implements ConnectedAccountsSubscriber {
-      add(id: number, description: {displayName?: string, uniqueName?: string}, vendor: VendorDescription, _resources: unknown[], valid: boolean, _vendorId: string) {
-        const provider = vendor.modelProvider
-        if (!provider || !valid) return
-        setConnectedModelProviders(items => ({
-          ...items,
-          [provider.id]: {
-            displayName: provider.displayName,
-            models: provider.models,
-            accounts: [...(items[provider.id]?.accounts ?? []).filter(account => account.id !== id), {
-              id, name: description.displayName ?? description.uniqueName ?? provider.displayName,
-            }],
-          },
-        }))
-      }
-      remove(id: number) { setConnectedModelProviders(items => Object.fromEntries(Object.entries(items).map(([provider, value]) => [provider, {...value, accounts: value.accounts.filter(account => account.id !== id)}]))) }
-      ready() {}
-    }
-    const subscriber = new Subscriber()
-    let disposed = false
-    let subscription: { [Symbol.dispose](): void } | undefined
-    authenticatedApi.subscribeConnectedAccounts(subscriber).then(stub => {
-      subscription = stub
-      if (disposed) subscription[Symbol.dispose]()
-    })
-    return () => { disposed = true; subscription?.[Symbol.dispose]() }
-  }, [authenticatedApi])
-
-  const modelCatalogs: Record<string, ModelCatalog> = {...SUGGESTED_MODELS}
-  const providerLabels: Record<string, string> = {...PROVIDER_LABELS}
-  for (const [id, provider] of Object.entries(connectedModelProviders)) {
-    modelCatalogs[id] = provider.models
-    providerLabels[id] = provider.displayName
-  }
 
   const handleModelSelect = (value: string) => {
     setSelectValue(value)

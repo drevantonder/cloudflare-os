@@ -12,7 +12,6 @@ import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.mode
 import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai.models";
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
-import { OPENAI_CODEX_MODEL_PROVIDER, type DirectModelProvider } from "@gadgets/openai-codex-gatekeeper/model-provider";
 import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
@@ -21,6 +20,7 @@ import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LI
 import { AiGatewayConfig, getAiGatewayConfig, type AiGatewayLogRoute } from "./ai-gateway.js";
 import { completeText } from "./ai-invoke.js";
 import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
+import { directModelProvider, registerDirectModelProviderStreams } from "./direct-model-providers.js";
 
  // Routing to bill a user's own Cloudflare account for inference (BYOK path once the free tier is
  // exhausted). Defined here to avoid a backend->ai-gateway-billing type import cycle at runtime.
@@ -114,21 +114,9 @@ const API_STREAMS: Record<string, StreamFunction<Api, SimpleStreamOptions>> = {
   "google-generative-ai": googleGenerativeAiStream as StreamFunction<Api, SimpleStreamOptions>,
 };
 
-// External model providers encapsulate vendor-specific API shape, catalog, transport, and error
-// handling in their own package. The kernel only registers the provider at this generic seam.
-const DIRECT_MODEL_PROVIDERS: DirectModelProvider[] = [OPENAI_CODEX_MODEL_PROVIDER];
-for (const provider of DIRECT_MODEL_PROVIDERS) API_STREAMS[provider.api] = provider.stream;
-
-function directModelProvider(providerId: string): DirectModelProvider | undefined {
-  return DIRECT_MODEL_PROVIDERS.find(provider => provider.id === providerId);
-}
-
-export function normalizeDirectModelConfig(config: AiModelConfig): AiModelConfig {
-  return directModelProvider(config.provider)?.migrateConfig?.(config) ?? config;
-}
+registerDirectModelProviderStreams(API_STREAMS);
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-
 // Consult pi's builtin catalog for cost/compat metadata of a known model id. Unknown models are
 // fine (synthesized with zero cost). Import per-provider, not providers/all.
 function catalogModel(provider: AiModelConfig["provider"], modelId: string): Model<Api> | undefined {
