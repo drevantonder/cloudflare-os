@@ -526,6 +526,7 @@
       ],
       "compatibilityDate": "2026-02-02",
       "compatibilityFlags": [
+        "allow_irrevocable_stub_storage",
         "nodejs_compat"
       ],
       "inputs": [
