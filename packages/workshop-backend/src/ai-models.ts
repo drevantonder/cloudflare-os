@@ -4,7 +4,7 @@ import type {
   AnthropicMessagesCompat, Api, AssistantMessageEventStream, Context, Model, ModelCost,
   OpenAICompletionsCompat, ProviderHeaders, SimpleStreamOptions, StreamFunction,
 } from "@earendil-works/pi-ai";
-import { lazyStream } from "@earendil-works/pi-ai";
+import { lazyStream, type ModelAuth } from "@earendil-works/pi-ai";
 import { stream as anthropicMessagesStream } from "@earendil-works/pi-ai/api/anthropic-messages";
 import { stream as googleGenerativeAiStream } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { stream as openaiCompletionsStream } from "@earendil-works/pi-ai/api/openai-completions";
@@ -15,7 +15,7 @@ import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cl
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
-import { ApprovalQueue, Gatekeeper, ModelRequestAuth, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
+import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
 import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LIMIT }
@@ -55,7 +55,7 @@ type ModelRoutingOptions = {
   sessionAffinity?: string;
   userGateway?: UserGatewayRouting;
   metadata?: GatewayMetadataContext;
-  resolveAuth?: () => Promise<ModelRequestAuth>;
+  resolveAuth?: () => Promise<ModelAuth>;
 };
 
 /**
@@ -260,7 +260,7 @@ type HandleArgs = {
   apiKey?: string;
   // Deferred account auth follows pi's lazy stream boundary: credentials are resolved when a
   // stream starts, rather than while selecting a model.
-  resolveAuth?: () => Promise<ModelRequestAuth>;
+  resolveAuth?: () => Promise<ModelAuth>;
   headers?: ProviderHeaders;
   // Structured gateway attribution; sent as `cf-aig-metadata` on gateway-routed requests only
   // (pi does not forward options.metadata to that header itself).
@@ -508,7 +508,7 @@ function getModelViaGateway(
 }
 
 function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
-                             resolveAuth: (() => Promise<ModelRequestAuth>) | undefined,
+                             resolveAuth: (() => Promise<ModelAuth>) | undefined,
                              sessionAffinity?: string): ModelHandle {
   if (config.connectedAccountId === undefined || !resolveAuth) {
     throw new Error("The selected OpenAI Codex account is no longer connected.");

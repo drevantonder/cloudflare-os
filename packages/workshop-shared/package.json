@@ -37,6 +37,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.83.0",
     "@cloudflare/workers-types": "^4.20260702.1",
     "capnweb": "^0.8.0"
   },

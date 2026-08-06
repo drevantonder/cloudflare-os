@@ -1,5 +1,6 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelAuthAccount, ModelRequestAuth, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
+import type { ModelAuth } from "@earendil-works/pi-ai";
+import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelAuthAccount, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
 import { tokensChanged, type CodexTokens } from "./token-refresh.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -143,7 +144,7 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props>
     return {displayName: accountLabel(identity), uniqueName: identity.accountId ?? this.ctx.props.accountObjectId, avatar:{url:"https://openai.com/favicon.ico"}};
   }
   async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
-  async getModelAuth(): Promise<ModelRequestAuth> { return {apiKey: await this.getAccessToken()}; }
+  async getModelAuth(): Promise<ModelAuth> { return {apiKey: await this.getAccessToken()}; }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }
   async startResourceConfigurator(_resource:string): Promise<ResourceConfiguratorFrame> { throw new Error("Codex accounts do not provide resources."); }
