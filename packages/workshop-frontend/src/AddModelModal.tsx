@@ -3,7 +3,7 @@ import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToas
 import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
-import { useOpenAICodexAccounts } from './useOpenAICodexAccounts'
+import { OpenAICodexAccountSelect } from './OpenAICodexAccountSelect'
 
 interface AddModelModalProps {
   visible: boolean
@@ -82,13 +82,11 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
       }
     }
 
-    if (provider !== 'openai-codex') {
-      options.push({
-        value: encodeSelection(provider),
-        label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
-        provider,
-      })
-    }
+    options.push({
+      value: encodeSelection(provider),
+      label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
+      provider,
+    })
   }
 
   return options
@@ -107,7 +105,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const [apiToken, setApiToken] = useState('')
   const [accountId, setAccountId] = useState('')
   const [apiUrl, setApiUrl] = useState('')
-  const codexAccounts = useOpenAICodexAccounts(authenticatedApi)
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -119,6 +116,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const enabledProviders: Set<string> | null = gatewayMode
     ? new Set(aiConfig.enabledProviders)
     : null
+  const isOpenAICodex = selection?.provider === 'openai-codex'
 
   // Reset all state when dialog closes
   useEffect(() => {
@@ -167,7 +165,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
     const isOllama = selection?.provider === 'ollama'
     const isCloudflare = selection?.provider === 'cloudflare'
-    const isOpenAICodex = selection?.provider === 'openai-codex'
     const showCredentials = !gatewayMode
 
     if (showCredentials && selection && !isOllama && !isOpenAICodex && !apiToken.trim()) {
@@ -195,8 +192,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const isSuggested = selection!.type === 'suggested'
       const finalModelId = isSuggested ? selection!.modelId : modelId.trim()
       const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
-      const isOpenAICodex = selection!.provider === 'openai-codex'
-
       const profile: AiChatAuthorInfo = {
         type: 'agent',
         id: isOpenAICodex ? `${finalModelId}:${selection!.provider}:${accountId.trim()}` : finalModelId,
@@ -227,7 +222,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const example = selection ? exampleModel(selection.provider) : null
   const isOllama = selection?.provider === 'ollama'
   const isCloudflare = selection?.provider === 'cloudflare'
-  const isOpenAICodex = selection?.provider === 'openai-codex'
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
@@ -318,9 +312,15 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           )}
 
           {showCredentials && isOpenAICodex && (
-            <Select label="OpenAI Codex account" value={accountId || undefined} onValueChange={(v) => { setAccountId(v as string); setErrors(prev => ({ ...prev, accountId: '' })) }} error={errors.accountId} renderValue={(value) => codexAccounts.find(account => String(account.id) === value)?.name ?? 'Select an account'}>
-              {codexAccounts.map(account => <Select.Option key={account.id} value={String(account.id)}>{account.name}</Select.Option>)}
-            </Select>
+            <OpenAICodexAccountSelect
+              authenticatedApi={authenticatedApi}
+              value={accountId}
+              onValueChange={(value) => {
+                setAccountId(value)
+                setErrors(prev => ({ ...prev, accountId: '' }))
+              }}
+              error={errors.accountId}
+            />
           )}
 
           {/* API Token */}

@@ -1,11 +1,18 @@
-import { useEffect, useState } from 'react'
-import { ConnectedAccountsSubscriber } from '@gadgets/workshop-shared/api'
+import { Select } from '@cloudflare/kumo'
+import { AuthenticatedApi, ConnectedAccountsSubscriber } from '@gadgets/workshop-shared/api'
 import { RpcStub, RpcTarget } from 'capnweb'
-import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
+import { useEffect, useState } from 'react'
 
 type Account = {id: number, name: string}
 
-export function useOpenAICodexAccounts(authenticatedApi: RpcStub<AuthenticatedApi>) {
+interface OpenAICodexAccountSelectProps {
+  authenticatedApi: RpcStub<AuthenticatedApi>
+  value: string
+  onValueChange: (value: string) => void
+  error?: string
+}
+
+export function OpenAICodexAccountSelect({ authenticatedApi, value, onValueChange, error }: OpenAICodexAccountSelectProps) {
   const [accounts, setAccounts] = useState<Account[]>([])
 
   useEffect(() => {
@@ -29,5 +36,17 @@ export function useOpenAICodexAccounts(authenticatedApi: RpcStub<AuthenticatedAp
     return () => { disposed = true; subscription?.[Symbol.dispose]() }
   }, [authenticatedApi])
 
-  return accounts
+  return (
+    <Select
+      label="OpenAI Codex account"
+      value={value || undefined}
+      onValueChange={(next) => onValueChange(next as string)}
+      error={error}
+      renderValue={(selected) => accounts.find(account => String(account.id) === selected)?.name ?? 'Select an account'}
+    >
+      {accounts.map(account => (
+        <Select.Option key={account.id} value={String(account.id)}>{account.name}</Select.Option>
+      ))}
+    </Select>
+  )
 }

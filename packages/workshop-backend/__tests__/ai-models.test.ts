@@ -396,6 +396,21 @@ describe("OpenAI Codex request authentication", () => {
       accountId: "7",
     }, INITIATOR)).toThrow("selected OpenAI Codex account");
   });
+
+  it("supports custom model IDs", () => {
+    const handle = getModel(env({CF_AI_GATEWAY: undefined}), {
+      provider: "openai-codex",
+      model: "custom-codex-model",
+      apiToken: "token",
+      accountId: "7",
+    }, INITIATOR);
+
+    expect(handle.model).toMatchObject({
+      id: "custom-codex-model",
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+    });
+  });
 });
 
 describe("PDF attachment bridging", () => {
