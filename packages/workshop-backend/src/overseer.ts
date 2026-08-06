@@ -45,11 +45,11 @@ import { renderGadgetPdf } from "./browser-export";
 const logger = createWorkshopLogger("workshop.overseer");
 export const AGENT_RUNNING_ERROR_MESSAGE = "Agent is running, wait for it to finish.";
 
-function modelAuthResolver(user: DurableObjectStub<UserDurableObject>, config: AiModelConfig) {
+function modelApiKeyResolver(user: DurableObjectStub<UserDurableObject>, config: AiModelConfig) {
   if (config.provider !== "openai-codex" || config.connectedAccountId === undefined) {
     return undefined;
   }
-  return () => user.getModelAuth(config.connectedAccountId!, "openai-codex");
+  return () => user.getModelApiKey(config.connectedAccountId!, "openai-codex");
 }
 
 let CODE_MODE_HARNESS =
@@ -3929,7 +3929,7 @@ class OverseerImpl implements AgentHooks {
             sessionAffinity,
             userGateway: byokRouting,
             metadata: { source: "chat", gadgetId: this.ctx.id.toString(), chatId },
-            resolveAuth: modelAuthResolver(initiatorUser, aiModel.config),
+            resolveApiKey: modelApiKeyResolver(initiatorUser, aiModel.config),
           });
 
       let controller = liveChat.cancelController;
@@ -4484,7 +4484,7 @@ class OverseerImpl implements AgentHooks {
               user: DurableObjectStub<UserDurableObject>}): Promise<string | undefined> {
     try {
       let model = getModel(this.env, quick.config, quick.initiator, {
-        resolveAuth: modelAuthResolver(quick.user, quick.config),
+        resolveApiKey: modelApiKeyResolver(quick.user, quick.config),
       });
       let result = await completeText(model, {
         signal: AbortSignal.timeout(10_000),
@@ -5166,7 +5166,7 @@ class OverseerImpl implements AgentHooks {
     try {
       let model = getModel(this.env, modelConfig, initiator, {
         metadata: { source: "thread-title", gadgetId: this.ctx.id.toString(), chatId },
-        resolveAuth: modelAuthResolver(user, modelConfig),
+        resolveApiKey: modelApiKeyResolver(user, modelConfig),
       });
 
       let result = await completeText(model, {
@@ -5225,7 +5225,7 @@ class OverseerImpl implements AgentHooks {
 
       let model = getModel(this.env, modelConfig, initiator, {
         metadata: { source: "gadget-title", gadgetId: this.ctx.id.toString(), chatId },
-        resolveAuth: modelAuthResolver(user, modelConfig),
+        resolveApiKey: modelApiKeyResolver(user, modelConfig),
       });
 
       let gadgetTitle = await completeText(model, {

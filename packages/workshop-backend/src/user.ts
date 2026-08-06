@@ -1,7 +1,6 @@
 import { RpcStub } from "capnweb";
-import type { ModelAuth } from "@earendil-works/pi-ai";
 import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame, ModelApiKeyAccount } from "@gadgets/workshop-shared/gatekeeper";
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -53,7 +52,7 @@ export type ProvidedAccountInfo = {
 // usable directly, the way the runtime stub actually behaves.
 type AccountCreatorStub = Required<Pick<GatekeeperVendor, "createAccount">>;
 type SingletonAccountStub = Required<Pick<GatekeeperUser, "getSingletonGatekeeperClass" | "startAppUi">>;
-type ModelApiKeyAccountStub = Required<Pick<ModelApiKeyAccount, "getModelApiKey">>;
+type ModelApiKeyAccountStub = Required<Pick<GatekeeperUser, "getModelApiKey">>;
 
 function areCredentialsValid(record: ConnectedAccountRecord): boolean {
   if (record.credentialsExpired) return false;
@@ -699,13 +698,12 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return result;
   }
 
-  async getModelAuth(accountId: number, vendorId: string): Promise<ModelAuth> {
+  async getModelApiKey(accountId: number, vendorId: string): Promise<string> {
     const account = this.storage.connectedAccounts.get(accountId);
     if (!account || account.vendorId !== vendorId) {
       throw new Error("The selected model account is no longer connected.");
     }
-    const apiKey = await (account.account as unknown as ModelApiKeyAccountStub).getModelApiKey();
-    return {apiKey};
+    return await (account.account as unknown as ModelApiKeyAccountStub).getModelApiKey();
   }
 
   // Model gatekeepers are created by the user who owns their selected account. This keeps the

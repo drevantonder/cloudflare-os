@@ -372,29 +372,25 @@ describe("OpenAI Codex request authentication", () => {
   });
 
   it("resolves account auth only when a stream starts", async () => {
-    const resolveAuth = vi.fn(async () => ({
-      apiKey: `header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature-${resolveAuth.mock.calls.length}`,
-      headers: { "x-codex-account": "connected" },
-      baseUrl: "https://codex.example/backend-api",
-    }));
+    const resolveApiKey = vi.fn(async () =>
+      `header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature-${resolveApiKey.mock.calls.length}`);
     const handle = getModel(env({CF_AI_GATEWAY: undefined}), {
       provider: "openai-codex",
       model: "gpt-5.6-sol",
       apiToken: "",
       connectedAccountId: 7,
-    }, INITIATOR, {resolveAuth});
+    }, INITIATOR, {resolveApiKey});
 
-    expect(resolveAuth).not.toHaveBeenCalled();
+    expect(resolveApiKey).not.toHaveBeenCalled();
 
     await captureRequest(handle);
     await captureRequest(handle);
 
-    expect(resolveAuth).toHaveBeenCalledTimes(2);
+    expect(resolveApiKey).toHaveBeenCalledTimes(2);
     expect(capturedRequests).toHaveLength(2);
-    expect(capturedRequests[0].url).toBe("https://codex.example/backend-api/codex/responses");
+    expect(capturedRequests[0].url).toBe("https://chatgpt.com/backend-api/codex/responses");
     expect(capturedRequests[0].headers.get("authorization")).toContain("Bearer header.");
     expect(capturedRequests[0].headers.get("authorization")).not.toBe(capturedRequests[1].headers.get("authorization"));
-    expect(capturedRequests[0].headers.get("x-codex-account")).toBe("connected");
   });
 
   it("requires a request-time account resolver", () => {

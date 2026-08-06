@@ -1,5 +1,5 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelApiKeyAccount, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
+import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
 import { tokensChanged, type CodexTokens } from "./token-refresh.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -134,7 +134,7 @@ export class CodexAccount extends DurableObject<Env> {
 }
 
 export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props>
-    implements GatekeeperUser, ModelApiKeyAccount {
+    implements GatekeeperUser {
   #account() { return this.ctx.exports.CodexAccount.get(this.ctx.exports.CodexAccount.idFromString(this.ctx.props.accountObjectId)); }
   async describe(): Promise<AccountDescription> {
     const account = this.#account();
