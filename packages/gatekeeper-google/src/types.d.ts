@@ -34,6 +34,20 @@ export type EmailContent = {
   html?: string;
 }
 
+/** A file attached to a Gmail message. */
+export type GmailAttachment = {
+  /** Filename supplied by the sender, if any. */
+  filename: string | null;
+  /** MIME type reported by the message, such as `application/pdf`. */
+  mimeType: string;
+  /** Whether the file is a regular attachment, inline content, or unspecified. */
+  disposition: "attachment" | "inline" | null;
+  /** Content ID used to reference inline content from an HTML body. */
+  contentId?: string;
+  /** Attachment bytes, ready to pass to APIs that accept a Blob. */
+  content: Blob;
+}
+
 // ── Capability interfaces ───────────────────────────────────────────
 // These are RPC stubs — all methods are async. Capabilities can be
 // passed across Worker boundaries and retain their access rights.
@@ -111,6 +125,9 @@ export interface GmailMessage {
 
   /** Get the message content. Returns plain text and/or HTML as available. */
   getContent(): Promise<EmailContent>;
+
+  /** Get files attached to the message, including inline files. */
+  getAttachments(): Promise<GmailAttachment[]>;
 
   /** Reply to the sender only. */
   reply(body: string): Promise<void>;
