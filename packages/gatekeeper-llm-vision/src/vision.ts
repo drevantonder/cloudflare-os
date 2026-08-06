@@ -78,7 +78,10 @@ export class VisionGatekeeper extends DurableObject<Cloudflare.Env> implements G
 }
 
 @validateRpc()
-export class VisionAccount extends WorkerEntrypoint<Cloudflare.Env> implements GatekeeperUser {
+export class VisionAccount
+  extends WorkerEntrypoint<Cloudflare.Env, { accountId: string }>
+  implements GatekeeperUser
+{
   async describe(): Promise<AccountDescription> {
     return {
       displayName: "LLM Vision",
@@ -138,7 +141,9 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
 
   @skipRpcValidation()
   async createAccount(): Promise<Fetcher<GatekeeperUser>> {
-    return this.ctx.exports.VisionAccount({}) as unknown as Fetcher<GatekeeperUser>;
+    return this.ctx.exports.VisionAccount({
+      props: { accountId: crypto.randomUUID() },
+    }) as unknown as Fetcher<GatekeeperUser>;
   }
 
   connectAccount(
