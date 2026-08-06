@@ -5,6 +5,8 @@
     "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react",
+    "jsxFactory": "h",
     "types": ["./worker-configuration.d.ts"],
     "outDir": "./dist",
     "declaration": true,

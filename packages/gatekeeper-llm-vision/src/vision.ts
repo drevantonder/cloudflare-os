@@ -1,4 +1,10 @@
-import { DurableObject, RpcStub as NativeRpcStub, WorkerEntrypoint } from "cloudflare:workers";
+import {
+  DurableObject,
+  RpcStub,
+  RpcStub as NativeRpcStub,
+  RpcTarget,
+  WorkerEntrypoint,
+} from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import type {
   AccountDescription,
@@ -18,6 +24,7 @@ import { analyzeWithGemini, readGatewayConfig } from "./gemini.js";
 import { prepareFiles } from "./mupdf-preparer.js";
 import { VisionSessionImpl } from "./session.js";
 import type { VisionSession } from "./types.js";
+import VISION_CONFIGURATOR_HTML from "./generated/vision-configurator-ui.txt";
 import TYPES_CODE from "./types.txt";
 
 const VISION_ICON = {
@@ -27,9 +34,19 @@ const VISION_ICON = {
   ),
 };
 
+const VISION_RESOURCE: SupportedResource = {
+  urlPattern: "vision://analyze",
+  title: "LLM Vision",
+  description: "Analyze attached images and PDFs with a multimodal language model.",
+  grantable: false,
+};
+
+@validateRpc()
+class VisionConfiguratorUI extends RpcTarget {}
+
 @validateRpc()
 export class VisionGatekeeper extends DurableObject<Cloudflare.Env> implements Gatekeeper<VisionSession> {
-  /** Describes the ambient LLM Vision capability. */
+  /** Describes the LLM Vision resource. */
   async describe(): Promise<ResourceDescription> {
     return {
       url: "vision://analyze",
@@ -86,23 +103,29 @@ export class VisionAccount
     return {
       displayName: "LLM Vision",
       avatar: VISION_ICON,
-      singleton: { tsType: "VisionSession" },
     };
   }
 
-  @skipRpcValidation()
-  async getSingletonGatekeeperClass(): Promise<DurableObjectClass<Gatekeeper<VisionSession>>> {
-    return this.ctx.exports.VisionGatekeeper({});
-  }
-
   async getSupportedResources(): Promise<SupportedResource[]> {
-    return [];
+    return [VISION_RESOURCE];
   }
-  getGatekeeperClassFor(_url: string): never {
-    throw new Error("LLM Vision has no URL-addressed resources.");
+  async getGatekeeperClassFor(url: string): Promise<{
+    class: DurableObjectClass<Gatekeeper<VisionSession>>;
+    resource: SupportedResource;
+  }> {
+    if (url !== VISION_RESOURCE.urlPattern) {
+      throw new Error(`Unsupported LLM Vision resource: ${url}`);
+    }
+    return { class: this.ctx.exports.VisionGatekeeper({}), resource: VISION_RESOURCE };
   }
-  startResourceConfigurator(_resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
-    throw new Error("LLM Vision has no resource configurator.");
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern !== VISION_RESOURCE.urlPattern) {
+      throw new Error(`Unsupported LLM Vision resource: ${resourceUrlPattern}`);
+    }
+    return {
+      iframeHtml: VISION_CONFIGURATOR_HTML,
+      ui: new RpcStub(new VisionConfiguratorUI()),
+    };
   }
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{ url?: string }> {
     return {};
@@ -154,7 +177,7 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
   }
 
   async getSupportedResources(_options?: { userId?: string }): Promise<SupportedResource[]> {
-    return [];
+    return [VISION_RESOURCE];
   }
 
   async getTypeScriptTypes(): Promise<string> {

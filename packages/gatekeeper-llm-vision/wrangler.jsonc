@@ -3,7 +3,7 @@
   "name": "gatekeeper-llm-vision",
   "main": ".wrangler/validate/src/worker.ts",
   "build": {
-    "command": "pnpm run prepare:mupdf && pnpm exec capnweb-validate build --out .wrangler/validate",
+    "command": "pnpm run build:configurator && pnpm run prepare:mupdf && pnpm exec capnweb-validate build --out .wrangler/validate",
     "watch_dir": "src",
   },
   "compatibility_date": "2026-02-02",
