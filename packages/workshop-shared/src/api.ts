@@ -943,8 +943,8 @@ export type AiModelConfig = {
   // provider "cloudflare" (whose REST endpoint is account-scoped); unused for other providers.
   accountId?: string;
 
-  // Connected account that supplies credentials for a model provider.
-  connectedAccountId?: number;
+  // Connected OpenAI Codex account that supplies the access token.
+  openAiCodexAccountId?: number;
 
   // URL of the API. If not specified, use the default for the provider. Overriding the URL is
   // useful in order to use AI proxy products like Cloudflare's AI gateway, or even to use an

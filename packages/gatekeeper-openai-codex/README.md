@@ -43,5 +43,5 @@ account errors are preserved unchanged.
 For local development against the remote VPC Network binding, start the development server with:
 
 ```sh
-VPC_NETWORK_BINDING=OPENAI_CODEX_EGRESS pnpm dev-server
+pnpm dev-server --use-openai-codex-egress
 ```

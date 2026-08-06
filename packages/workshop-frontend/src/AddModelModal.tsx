@@ -17,7 +17,7 @@ type SelectionType =
   | { type: 'suggested', provider: AiModelProvider, modelId: string, displayName: string }
   | { type: 'custom', provider: AiModelProvider }
 
-const PROVIDER_LABELS: Record<string, string> = {
+const PROVIDER_LABELS: Record<AiModelProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
@@ -27,7 +27,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 }
 
 // Placeholder hinting at the shape of each provider's API token.
-const API_TOKEN_PLACEHOLDERS: Record<string, string> = {
+const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
   anthropic: 'sk-ant-...',
   openai: 'sk-...',
   google: 'AIza...',
@@ -65,11 +65,10 @@ function decodeSelection(value: string): SelectionType {
 
 // Build the flat list of options for the Select dropdown.
 function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null) {
-  const options: { value: string; label: string; provider: string }[] = []
+  const options: { value: string; label: string; provider: AiModelProvider }[] = []
   const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
 
   for (const provider of providerOrder) {
-    if (gatewayMode && !(provider in SUGGESTED_MODELS)) continue
     if (enabledProviders && !enabledProviders.has(provider)) continue
 
     // In gateway mode, suggested models are already built-in, so don't list them.
@@ -168,13 +167,13 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
     const isOllama = selection?.provider === 'ollama'
     const isCloudflare = selection?.provider === 'cloudflare'
-    const isConnectedProvider = selection?.provider === 'openai-codex'
+    const isOpenAICodex = selection?.provider === 'openai-codex'
     const showCredentials = !gatewayMode
 
-    if (showCredentials && selection && !isOllama && !isConnectedProvider && !apiToken.trim()) {
+    if (showCredentials && selection && !isOllama && !isOpenAICodex && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
     }
-    if (showCredentials && isConnectedProvider && !accountId.trim()) newErrors.accountId = 'Connect and select an account'
+    if (showCredentials && isOpenAICodex && !accountId.trim()) newErrors.accountId = 'Connect and select an account'
 
     if (showCredentials && isCloudflare && !accountId.trim()) {
       newErrors.accountId = 'Please enter your Cloudflare account ID'
@@ -196,11 +195,11 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const isSuggested = selection!.type === 'suggested'
       const finalModelId = isSuggested ? selection!.modelId : modelId.trim()
       const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
-      const isConnectedProvider = selection!.provider === 'openai-codex'
+      const isOpenAICodex = selection!.provider === 'openai-codex'
 
       const profile: AiChatAuthorInfo = {
         type: 'agent',
-        id: isConnectedProvider ? `${finalModelId}:${selection!.provider}:${accountId.trim()}` : finalModelId,
+        id: isOpenAICodex ? `${finalModelId}:${selection!.provider}:${accountId.trim()}` : finalModelId,
         name: finalDisplayName,
       }
 
@@ -208,8 +207,8 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         provider: selection!.provider,
         model: finalModelId,
         apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && isConnectedProvider && accountId.trim() && { connectedAccountId: Number(accountId) }),
-        ...(!gatewayMode && !isConnectedProvider && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!gatewayMode && isOpenAICodex && accountId.trim() && { openAiCodexAccountId: Number(accountId) }),
+        ...(!gatewayMode && !isOpenAICodex && accountId.trim() && { accountId: accountId.trim() }),
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
@@ -233,7 +232,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
-  const groupedOptions: { provider: string; items: typeof options }[] = []
+  const groupedOptions: { provider: AiModelProvider; items: typeof options }[] = []
   for (const opt of options) {
     const last = groupedOptions[groupedOptions.length - 1]
     if (last && last.provider === opt.provider) {
@@ -270,7 +269,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
                   <div className="h-px bg-kumo-line my-1 mx-2" />
                 )}
                 <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle select-none">
-                  {PROVIDER_LABELS[group.provider] || group.provider}
+                  {PROVIDER_LABELS[group.provider]}
                 </div>
                 {group.items.map(opt => (
                   <Select.Option key={opt.value} value={opt.value}>

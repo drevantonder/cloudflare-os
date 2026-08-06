@@ -68,7 +68,6 @@ export type VendorDescription = {
   // The account — not the vendor — declares whether it provides an agent singleton and/or a
   // management UI (see AccountDescription.singleton / .providesUi).
   autoProvisionsAccount?: boolean;
-
 }
 
 // Per-open context the Workshop passes to GatekeeperUser.startAppUi(). `isAdmin` is supplied fresh

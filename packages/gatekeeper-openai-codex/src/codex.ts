@@ -140,9 +140,6 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements
     return {displayName: accountLabel(identity), uniqueName: identity.accountId ?? this.ctx.props.accountObjectId, avatar:{url:"https://openai.com/favicon.ico"}};
   }
   async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
-  async getModelProviderCredentials(): Promise<{provider: string, apiToken: string}> {
-    return { provider: "openai-codex", apiToken: await this.getAccessToken() };
-  }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }
   async startResourceConfigurator(_resource:string): Promise<ResourceConfiguratorFrame> { throw new Error("Codex accounts do not provide resources."); }

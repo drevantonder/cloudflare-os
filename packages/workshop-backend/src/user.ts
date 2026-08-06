@@ -12,7 +12,7 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
-import { resolveConnectedModelCredentials } from "./connected-model-credentials.js";
+import { resolveOpenAICodexCredentials } from "./openai-codex.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -681,7 +681,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
       result.aiModel = {
         ...result.aiModel,
-        config: await this.#resolveModelCredentials(result.aiModel.config),
+        config: await this.#resolveOpenAICodexCredentials(result.aiModel.config),
       };
     }
 
@@ -694,15 +694,15 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = await this.#resolveModelCredentials(quickModel.config);
+          result.quickModel = await this.#resolveOpenAICodexCredentials(quickModel.config);
         }
       }
     }
     return result;
   }
 
-  async #resolveModelCredentials(config: AiModelConfig): Promise<AiModelConfig> {
-    return resolveConnectedModelCredentials(
+  async #resolveOpenAICodexCredentials(config: AiModelConfig): Promise<AiModelConfig> {
+    return resolveOpenAICodexCredentials(
         config,
         id => this.storage.connectedAccounts.get(id),
     );
