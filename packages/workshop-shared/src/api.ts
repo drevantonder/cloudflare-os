@@ -939,8 +939,8 @@ export type AiModelConfig = {
   // Secret API token for the respective provider, for billing purposes.
   apiToken: string;
 
-  // Provider-specific account ID. For Cloudflare this identifies the Workers AI account; for
-  // OpenAI Codex this identifies the connected Gatekeeper account supplying request credentials.
+  // Cloudflare account ID owning the Workers AI deployment the token authorizes. Required for
+  // provider "cloudflare" (whose REST endpoint is account-scoped); unused for other providers.
   accountId?: string;
 
   // URL of the API. If not specified, use the default for the provider. Overriding the URL is
