@@ -262,7 +262,18 @@ type HandleArgs = {
   gatewayMetadata?: GatewayMetadata;
   sessionAffinity?: string;
   aiGatewayLogRoute?: AiGatewayLogRoute;
+  fetch?: typeof fetch;
 };
+
+const CODEX_ORIGINATOR = "codex_cli_rs";
+const CODEX_USER_AGENT = "codex_cli_rs/0.0.0 (Cloudflare OS)";
+
+function fetchCodex(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set("originator", CODEX_ORIGINATOR);
+  headers.set("user-agent", CODEX_USER_AGENT);
+  return fetch(input, {...init, headers});
+}
 
 function makeHandle(args: HandleArgs): ModelHandle {
   const streamFn = API_STREAMS[args.model.api];
@@ -313,6 +324,7 @@ function makeHandle(args: HandleArgs): ModelHandle {
             ? apiExtras
             : args.model.api === "anthropic-messages" ? { thinkingEnabled: false } : {}),
         ...options,
+        ...(args.fetch ? { fetch: args.fetch } : {}),
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         // Session affinity: pi only sends it when caching isn't "none" (fine for us).
@@ -527,6 +539,7 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
           compat: catalog?.compat,
         },
         apiKey: config.apiToken,
+        fetch: fetchCodex,
         sessionAffinity,
       });
     case "cloudflare": {
