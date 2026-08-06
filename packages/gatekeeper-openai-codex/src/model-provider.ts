@@ -1,29 +1,14 @@
 import type { Api, Model, ModelCost, SimpleStreamOptions, StreamFunction } from "@earendil-works/pi-ai";
 import { stream as openAiCodexResponsesStream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
-import { SUGGESTED_MODELS, type AiModelConfig } from "@gadgets/workshop-shared/api";
+import { SUGGESTED_MODELS } from "@gadgets/workshop-shared/api";
 
 export const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
-export const OPENAI_CODEX_EGRESS_BINDING = "OPENAI_CODEX_EGRESS";
 
 export type ModelProviderModel = {
   name: string;
   contextWindow: number;
   outputLimit?: number;
-};
-
-export type DirectModelProvider = {
-  id: string;
-  displayName: string;
-  api: string;
-  models: Record<string, ModelProviderModel>;
-  stream: StreamFunction<Api, SimpleStreamOptions>;
-  catalogModel(modelId: string): Model<Api> | undefined;
-  createModel(modelId: string): Model<Api>;
-  createFetch(egress?: Fetcher): typeof globalThis.fetch;
-  transport: SimpleStreamOptions["transport"];
-  egressBinding?: string;
-  migrateConfig?(config: AiModelConfig): AiModelConfig;
 };
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -77,7 +62,7 @@ function createFetch(egress?: Fetcher): typeof globalThis.fetch {
 export const OPENAI_CODEX_MODELS_FOR_PICKER: Record<string, ModelProviderModel> =
     SUGGESTED_MODELS[OPENAI_CODEX_PROVIDER_ID];
 
-export const OPENAI_CODEX_MODEL_PROVIDER: DirectModelProvider = {
+export const OPENAI_CODEX_MODEL_PROVIDER = {
   id: OPENAI_CODEX_PROVIDER_ID,
   displayName: "OpenAI Codex",
   api: "openai-codex-responses",
@@ -86,17 +71,5 @@ export const OPENAI_CODEX_MODEL_PROVIDER: DirectModelProvider = {
   catalogModel,
   createModel,
   createFetch,
-  transport: "sse",
-  egressBinding: OPENAI_CODEX_EGRESS_BINDING,
-  migrateConfig(config) {
-    // This is a one-time data-shape migration from the first package integration. Keep it beside
-    // the provider that owned the old field, rather than making the Workshop remember Codex.
-    const legacy = config as AiModelConfig & { codexAccountId?: number };
-    if (config.provider !== OPENAI_CODEX_PROVIDER_ID ||
-        config.connectedAccountId !== undefined || legacy.codexAccountId === undefined) {
-      return config;
-    }
-    const { codexAccountId, ...rest } = legacy;
-    return { ...rest, connectedAccountId: codexAccountId };
-  },
+  transport: "sse" as SimpleStreamOptions["transport"],
 };

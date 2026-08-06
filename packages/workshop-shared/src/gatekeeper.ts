@@ -17,7 +17,6 @@
 // `Adapter` type is the root interface implemented by the service binding.
 
 import type { WorkerEntrypoint, DurableObject, RpcTarget, RpcStub } from "cloudflare:workers";
-import type { ModelProviderDescription } from "./model-provider";
 
 /**
  * A pagination cursor.
@@ -70,9 +69,6 @@ export type VendorDescription = {
   // management UI (see AccountDescription.singleton / .providesUi).
   autoProvisionsAccount?: boolean;
 
-  // If set, connected accounts from this vendor can provide credentials for an AI model provider.
-  // The account exposes ModelProviderGatekeeperUser.getModelProviderCredentials() on demand.
-  modelProvider?: ModelProviderDescription;
 }
 
 // Per-open context the Workshop passes to GatekeeperUser.startAppUi(). `isAdmin` is supplied fresh

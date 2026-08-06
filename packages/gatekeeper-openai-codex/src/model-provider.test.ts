@@ -31,12 +31,4 @@ describe("OpenAI Codex model provider", () => {
     });
   });
 
-  it("migrates the initial package account field without changing other providers", () => {
-    expect(OPENAI_CODEX_MODEL_PROVIDER.migrateConfig?.({
-      provider: "openai-codex", model: "gpt-5.6-terra", apiToken: "", codexAccountId: 7,
-    } as never)).toMatchObject({ connectedAccountId: 7 });
-    expect(OPENAI_CODEX_MODEL_PROVIDER.migrateConfig?.({
-      provider: "openai", model: "gpt-5.6-terra", apiToken: "", accountId: "account",
-    })).toMatchObject({ accountId: "account" });
-  });
 });

@@ -705,7 +705,6 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return resolveConnectedModelCredentials(
         config,
         id => this.storage.connectedAccounts.get(id),
-        id => this.vendors.get(id),
     );
   }
 

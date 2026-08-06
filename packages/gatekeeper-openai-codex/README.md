@@ -6,11 +6,9 @@ Workshop uses the resulting short-lived access token with Pi's direct OpenAI Cod
 ## Cloudflare OS integration
 
 The package exports its model-provider adapter at
-`@gadgets/openai-codex-gatekeeper/model-provider`. It owns the Codex model catalog, Pi transport,
-and request/error handling. Cloudflare OS only registers that adapter at its generic direct-model
-provider seam; connected accounts advertise their provider and models through the shared
-`modelProvider` capability. This keeps OpenAI-specific OAuth, egress, and transport behavior out
-of the Workshop kernel and model picker.
+`@gadgets/openai-codex-gatekeeper/model-provider`. Cloudflare OS owns the explicit Codex model
+catalog and account-picker integration; this package owns the OpenAI-specific OAuth, Pi transport,
+and request/error handling.
 
 ## Cloudflare Workers egress
 

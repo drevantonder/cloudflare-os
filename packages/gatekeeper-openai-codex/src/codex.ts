@@ -74,7 +74,7 @@ export default {
 
 export class GatekeeperVendor extends WorkerEntrypoint<Env> implements GatekeeperVendorInterface {
   status() { return "OpenAI Codex Gatekeeper"; }
-  async describe(): Promise<VendorDescription> { return {displayName:"OpenAI Codex", url:"https://openai.com/codex/", tagline:"Use your ChatGPT Codex account", description:"Connect a ChatGPT account with the Codex device authorization flow.", modelProvider: {id: OPENAI_CODEX_PROVIDER_ID, displayName: OPENAI_CODEX_MODEL_PROVIDER.displayName, models: OPENAI_CODEX_MODEL_PROVIDER.models}}; }
+  async describe(): Promise<VendorDescription> { return {displayName:"OpenAI Codex", url:"https://openai.com/codex/", tagline:"Use your ChatGPT Codex account", description:"Connect a ChatGPT account with the Codex device authorization flow."}; }
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>, _options?: GatekeeperConnectOptions): Promise<{url:string}> {
     const id = this.ctx.exports.CodexAccount.newUniqueId();
     const account = this.ctx.exports.CodexAccount.get(id);

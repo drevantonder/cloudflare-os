@@ -12,6 +12,7 @@ import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.mode
 import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai.models";
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
+import { OPENAI_CODEX_MODEL_PROVIDER } from "@gadgets/openai-codex-gatekeeper/model-provider";
 import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
@@ -20,7 +21,6 @@ import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LI
 import { AiGatewayConfig, getAiGatewayConfig, type AiGatewayLogRoute } from "./ai-gateway.js";
 import { completeText } from "./ai-invoke.js";
 import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
-import { directModelProvider, registerDirectModelProviderStreams } from "./direct-model-providers.js";
 
  // Routing to bill a user's own Cloudflare account for inference (BYOK path once the free tier is
  // exhausted). Defined here to avoid a backend->ai-gateway-billing type import cycle at runtime.
@@ -112,9 +112,8 @@ const API_STREAMS: Record<string, StreamFunction<Api, SimpleStreamOptions>> = {
   "openai-responses": openaiResponsesStream as StreamFunction<Api, SimpleStreamOptions>,
   "openai-completions": openaiCompletionsStream as StreamFunction<Api, SimpleStreamOptions>,
   "google-generative-ai": googleGenerativeAiStream as StreamFunction<Api, SimpleStreamOptions>,
+  "openai-codex-responses": OPENAI_CODEX_MODEL_PROVIDER.stream,
 };
-
-registerDirectModelProviderStreams(API_STREAMS);
 
 const ZERO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 // Consult pi's builtin catalog for cost/compat metadata of a known model id. Unknown models are
@@ -350,7 +349,7 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // Connected model-provider credentials authorize the provider directly. They must never be
   // routed through AI Gateway, which only understands its own stored or BYOK credentials.
-  if (directModelProvider(config.provider)) {
+  if (config.provider === "openai-codex") {
     return getModelDirect(env, config, options.sessionAffinity);
   }
 
@@ -490,17 +489,14 @@ function getModelViaGateway(
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
 function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
                         sessionAffinity?: string): ModelHandle {
-  const externalProvider = directModelProvider(config.provider);
-  if (externalProvider) {
-    if (!config.apiToken) throw new Error(`This ${externalProvider.displayName} model has no access token.`);
-    const egress = externalProvider.egressBinding
-        ? (env as unknown as Record<string, Fetcher | undefined>)[externalProvider.egressBinding]
-        : undefined;
+  if (config.provider === "openai-codex") {
+    if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
+    const egress = env.OPENAI_CODEX_EGRESS;
     return makeHandle({
-      model: externalProvider.createModel(config.model),
+      model: OPENAI_CODEX_MODEL_PROVIDER.createModel(config.model),
       apiKey: config.apiToken,
-      fetch: externalProvider.createFetch(egress),
-      transport: externalProvider.transport,
+      fetch: OPENAI_CODEX_MODEL_PROVIDER.createFetch(egress),
+      transport: OPENAI_CODEX_MODEL_PROVIDER.transport,
       sessionAffinity,
     });
   }
