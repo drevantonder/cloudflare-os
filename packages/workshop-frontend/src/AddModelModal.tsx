@@ -69,10 +69,8 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
   const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
 
   for (const provider of providerOrder) {
-    if (enabledProviders && !enabledProviders.has(provider)) continue
-
-    // In gateway mode, suggested models are already built-in, so don't list them.
-    if (!gatewayMode) {
+    // Suggested models routed through the deployment's gateway are already built in.
+    if (!gatewayMode || !enabledProviders?.has(provider)) {
       for (const [modelId, model] of Object.entries(SUGGESTED_MODELS[provider])) {
         options.push({
           value: encodeSelection(provider, modelId),
@@ -117,6 +115,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     ? new Set(aiConfig.enabledProviders)
     : null
   const isOpenAICodex = selection?.provider === 'openai-codex'
+  const selectedProviderUsesGateway = !!selection && !!enabledProviders?.has(selection.provider)
 
   // Reset all state when dialog closes
   useEffect(() => {
@@ -165,7 +164,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
     const isOllama = selection?.provider === 'ollama'
     const isCloudflare = selection?.provider === 'cloudflare'
-    const showCredentials = !gatewayMode
+    const showCredentials = !selectedProviderUsesGateway
 
     if (showCredentials && selection && !isOllama && !isOpenAICodex && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
@@ -202,9 +201,9 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const config: AiModelConfig = {
         provider: selection!.provider,
         model: finalModelId,
-        apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && accountId.trim() && { accountId: accountId.trim() }),
-        ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
+        apiToken: selectedProviderUsesGateway ? '' : apiToken.trim(),
+        ...(!selectedProviderUsesGateway && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!selectedProviderUsesGateway && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
       await authenticatedApi.addModel(profile, config)
@@ -223,7 +222,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const example = selection ? exampleModel(selection.provider) : null
   const isOllama = selection?.provider === 'ollama'
   const isCloudflare = selection?.provider === 'cloudflare'
-  const showCredentials = !gatewayMode
+  const showCredentials = !selectedProviderUsesGateway
 
   // Group options by provider for rendering with visual separators.
   const groupedOptions: { provider: string; items: typeof options }[] = []

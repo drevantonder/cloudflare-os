@@ -376,10 +376,10 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
         options.sessionAffinity);
   }
 
-  // Otherwise: when a platform AI Gateway is configured, route through it (platform-funded free
-  // tier). The config's apiToken/apiUrl are ignored in that mode.
+  // Otherwise, route configured providers through the platform AI Gateway (platform-funded free
+  // tier). Providers outside its allowlist continue to use their own credentials directly.
   let gwConfig = getAiGatewayConfig(env);
-  if (gwConfig) {
+  if (gwConfig?.providers.has(config.provider)) {
     return getModelViaGateway(gwConfig, config, initiator, options);
   }
 

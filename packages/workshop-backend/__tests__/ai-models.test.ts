@@ -37,7 +37,7 @@ function env(overrides: Partial<Cloudflare.Env> = {}): Cloudflare.Env {
     CF_AI_GATEWAY: "platform-gateway",
     CF_AI_GATEWAY_ACCOUNT_ID: "gateway-account-id",
     CF_AI_GATEWAY_API_TOKEN: "gateway-token",
-    CF_AI_GATEWAY_PROVIDERS: "anthropic,openai,google",
+    CF_AI_GATEWAY_PROVIDERS: "anthropic,openai,google,cloudflare",
     ...overrides,
   } as Cloudflare.Env;
 }
@@ -101,6 +101,19 @@ describe("getModel AI Gateway routing", () => {
       chatId: 7,
     });
   }, 15000);
+
+  it("routes providers outside the platform gateway allowlist directly", async () => {
+    const handle = getModel(env({ CF_AI_GATEWAY_PROVIDERS: "anthropic,openai,google" }), {
+      provider: "ollama",
+      model: "llama3.2",
+      apiToken: "",
+      apiUrl: "http://localhost:11434",
+    }, INITIATOR);
+
+    expect(handle.model.provider).toBe("ollama");
+    expect(handle.model.baseUrl).toBe("http://localhost:11434/v1");
+    expect(handle.aiGatewayLogRoute).toBeUndefined();
+  });
 
   it("routes Google through the gateway's google-ai-studio passthrough", () => {
     // The @google/genai SDK sends its API key as `x-goog-api-key`, which AI Gateway forwards to
