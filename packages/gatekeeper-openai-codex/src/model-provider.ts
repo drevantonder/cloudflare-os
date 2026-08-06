@@ -1,7 +1,7 @@
 import type { Api, Model, ModelCost, SimpleStreamOptions, StreamFunction } from "@earendil-works/pi-ai";
 import { stream as openAiCodexResponsesStream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
-import type { AiModelConfig } from "@gadgets/workshop-shared/api";
+import { SUGGESTED_MODELS, type AiModelConfig } from "@gadgets/workshop-shared/api";
 
 export const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
 export const OPENAI_CODEX_EGRESS_BINDING = "OPENAI_CODEX_EGRESS";
@@ -74,11 +74,8 @@ function createFetch(egress?: Fetcher): typeof globalThis.fetch {
   };
 }
 
-export const OPENAI_CODEX_MODELS_FOR_PICKER: Record<string, ModelProviderModel> = {
-  "gpt-5.6-sol": { name: "GPT 5.6 Sol", contextWindow: 272_000, outputLimit: 128_000 },
-  "gpt-5.6-luna": { name: "GPT 5.6 Luna", contextWindow: 272_000, outputLimit: 128_000 },
-  "gpt-5.6-terra": { name: "GPT 5.6 Terra", contextWindow: 272_000, outputLimit: 128_000 },
-};
+export const OPENAI_CODEX_MODELS_FOR_PICKER: Record<string, ModelProviderModel> =
+    SUGGESTED_MODELS[OPENAI_CODEX_PROVIDER_ID];
 
 export const OPENAI_CODEX_MODEL_PROVIDER: DirectModelProvider = {
   id: OPENAI_CODEX_PROVIDER_ID,
