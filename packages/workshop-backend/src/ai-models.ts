@@ -494,18 +494,8 @@ function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
   if (!config.accountId || !config.apiToken) {
     throw new Error("The selected OpenAI Codex account is no longer connected.");
   }
-  const catalog = catalogModel(config.provider, config.model);
-  const model = catalog ?? {
-    id: config.model,
-    name: config.model,
-    api: "openai-codex-responses",
-    provider: "openai-codex",
-    baseUrl: "https://chatgpt.com/backend-api",
-    reasoning: true,
-    input: ["text", "image"],
-    cost: ZERO_COST,
-    ...modelTokenWindow(config, catalog),
-  } satisfies Model<"openai-codex-responses">;
+  const model = catalogModel(config.provider, config.model);
+  if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
   return makeHandle({
     model,
     apiKey: config.apiToken,

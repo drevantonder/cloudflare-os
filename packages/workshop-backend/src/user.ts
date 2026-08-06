@@ -51,7 +51,6 @@ export type ProvidedAccountInfo = {
 // usable directly, the way the runtime stub actually behaves.
 type AccountCreatorStub = Required<Pick<GatekeeperVendor, "createAccount">>;
 type SingletonAccountStub = Required<Pick<GatekeeperUser, "getSingletonGatekeeperClass" | "startAppUi">>;
-type ModelApiKeyAccountStub = Required<Pick<GatekeeperUser, "getModelApiKey">>;
 
 function areCredentialsValid(record: ConnectedAccountRecord): boolean {
   if (record.credentialsExpired) return false;
@@ -705,14 +704,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (config.provider !== "openai-codex") {
       return config;
     }
-    const accountId = Number(config.accountId);
-    const account = Number.isInteger(accountId)
-      ? this.storage.connectedAccounts.get(accountId)
-      : undefined;
-    if (!account || account.vendorId !== "openai-codex") {
+    const account = this.storage.connectedAccounts.get(Number(config.accountId));
+    const getModelApiKey = account?.account.getModelApiKey;
+    if (!account || account.vendorId !== "openai-codex" ||
+        typeof getModelApiKey !== "function") {
       throw new Error("The selected model account is no longer connected.");
     }
-    const apiToken = await (account.account as unknown as ModelApiKeyAccountStub).getModelApiKey();
+    const apiToken = await getModelApiKey();
     return {...config, apiToken};
   }
 
