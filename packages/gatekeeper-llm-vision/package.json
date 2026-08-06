@@ -1,0 +1,28 @@
+{
+  "name": "@gadgets/gatekeeper-llm-vision",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
+    "deploy": "wrangler deploy",
+    "prepare:mupdf": "node prepare-mupdf.mjs",
+    "build": "pnpm run prepare:mupdf && tsc",
+    "types:check": "pnpm run prepare:mupdf && tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@gadgets/backend-utils": "workspace:*",
+    "@gadgets/workshop-shared": "workspace:*",
+    "capnweb": "^0.8.0",
+    "capnweb-validate": "0.2.1",
+    "htmlparser2": "10.1.0",
+    "mupdf": "1.28.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.20",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.115.0"
+  }
+}
