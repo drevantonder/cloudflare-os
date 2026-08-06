@@ -559,18 +559,9 @@ function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
       });
     case "openai-codex":
       if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
+      if (!catalog) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
       return makeHandle({
-        model: catalog ?? {
-          id: config.model,
-          name: config.model,
-          api: "openai-codex-responses",
-          provider: "openai-codex",
-          baseUrl: "https://chatgpt.com/backend-api",
-          reasoning: true,
-          input: ["text", "image"],
-          cost: ZERO_COST,
-          ...window,
-        },
+        model: catalog,
         apiKey: config.apiToken,
         fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
         transport: "sse",
