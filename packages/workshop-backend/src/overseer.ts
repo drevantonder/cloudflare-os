@@ -3920,6 +3920,7 @@ class OverseerImpl implements AgentHooks {
             sessionAffinity,
             userGateway: byokRouting,
             metadata: { source: "chat", gadgetId: this.ctx.id.toString(), chatId },
+            connectedAccount: aiModel.connectedAccount,
           });
 
       let controller = liveChat.cancelController;
@@ -4470,9 +4471,12 @@ class OverseerImpl implements AgentHooks {
   // fall back to a deterministic name.
   async generateBindingName(
       subject: string, takenNames: Set<string>,
-      quick: {config: AiModelConfig, initiator: AiChatAuthorInfo}): Promise<string | undefined> {
+      quick: {config: AiModelConfig, initiator: AiChatAuthorInfo,
+              connectedAccount?: UserAiModelRecord["connectedAccount"]}): Promise<string | undefined> {
     try {
-      let model = getModel(this.env, quick.config, quick.initiator);
+      let model = getModel(this.env, quick.config, quick.initiator, {
+        connectedAccount: quick.connectedAccount,
+      });
       let result = await completeText(model, {
         signal: AbortSignal.timeout(10_000),
         prompt:
@@ -4505,12 +4509,17 @@ class OverseerImpl implements AgentHooks {
   // Returns undefined when no quick model is configured (callers fall back to deterministic
   // names).
   async #getNamingQuickModel()
-      : Promise<{config: AiModelConfig, initiator: AiChatAuthorInfo} | undefined> {
+      : Promise<{config: AiModelConfig, initiator: AiChatAuthorInfo,
+                 connectedAccount?: UserAiModelRecord["connectedAccount"]} | undefined> {
     if (!this.ownerId) return undefined;
     try {
       let userMeta = await this.#ownerUserDo().getChatContext(null);
       return userMeta.quickModel
-          ? {config: userMeta.quickModel, initiator: userMeta.profile}
+          ? {
+            config: userMeta.quickModel.config,
+            initiator: userMeta.profile,
+            connectedAccount: userMeta.quickModel.connectedAccount,
+          }
           : undefined;
     } catch (err) {
       this.logger.warn("failed to resolve quick model for binding naming", {
@@ -5141,11 +5150,12 @@ class OverseerImpl implements AgentHooks {
 
   // Auto-generate a title for the given
   async generateThreadTitle(chatId: number, initialMessage: string,
-                            modelConfig: AiModelConfig,
+                            modelRecord: UserAiModelRecord,
                             initiator: AiChatAuthorInfo): Promise<void> {
     try {
-      let model = getModel(this.env, modelConfig, initiator, {
+      let model = getModel(this.env, modelRecord.config, initiator, {
         metadata: { source: "thread-title", gadgetId: this.ctx.id.toString(), chatId },
+        connectedAccount: modelRecord.connectedAccount,
       });
 
       let result = await completeText(model, {
@@ -5190,7 +5200,7 @@ class OverseerImpl implements AgentHooks {
   }
 
   // Generate a title for the whole gadget, called only after code starts being written.
-  async generateGadgetTitle(chatId: number, modelConfig: AiModelConfig,
+  async generateGadgetTitle(chatId: number, modelRecord: UserAiModelRecord,
                             initiator: AiChatAuthorInfo) {
     try {
       let parts: string[] = [];
@@ -5201,8 +5211,9 @@ class OverseerImpl implements AgentHooks {
         }
       }
 
-      let model = getModel(this.env, modelConfig, initiator, {
+      let model = getModel(this.env, modelRecord.config, initiator, {
         metadata: { source: "gadget-title", gadgetId: this.ctx.id.toString(), chatId },
+        connectedAccount: modelRecord.connectedAccount,
       });
 
       let gadgetTitle = await completeText(model, {
@@ -7266,7 +7277,11 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
       let userMeta = await this.clientUser.getChatContext(null);
       if (userMeta.quickModel) {
         bindingName = await this.impl.generateBindingName(
-            title, taken, {config: userMeta.quickModel, initiator: userMeta.profile});
+            title, taken, {
+              config: userMeta.quickModel.config,
+              initiator: userMeta.profile,
+              connectedAccount: userMeta.quickModel.connectedAccount,
+            });
       }
       bindingName ??= fallbackBindingName("GADGET", name => taken.has(name));
     } else if (chatNames?.has(bindingName)) {
@@ -7470,6 +7485,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
         name: this.impl.storage.title.get(),
       },
       metadata: { source: "model-binding", gadgetId: this.impl.ctx.id.toString() },
+      connectedAccount: chatMeta.aiModel!.connectedAccount,
     }
 
     let creationSpec: GatekeeperCreationSpec = {

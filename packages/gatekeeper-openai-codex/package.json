@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./src/codex.ts",
   "exports": { ".": "./src/codex.ts" },
-  "scripts": { "build": "tsc", "types:check": "tsc --noEmit", "test": "vitest run" },
+  "scripts": { "build": "tsc", "types:check": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
   "dependencies": { "@gadgets/workshop-shared": "workspace:*", "capnweb": "^0.8.0", "capnweb-validate": "0.2.1" },
   "devDependencies": { "typescript": "^5.9.3", "vitest": "^4.1.10", "wrangler": "^4.115.0" }
 }

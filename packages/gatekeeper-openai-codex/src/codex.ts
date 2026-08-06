@@ -1,5 +1,5 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
+import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ModelAuthAccount, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const USER_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -7,6 +7,7 @@ const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token"
 const OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const VERIFY_URL = "https://auth.openai.com/codex/device";
 const LIFETIME = 15 * 60 * 1000;
+const MINIMUM_TOKEN_VALIDITY = 5 * 60 * 1000;
 const REQUEST_TIMEOUT = 20_000;
 const JWT_AUTH_CLAIM = "https://api.openai.com/auth";
 
@@ -124,14 +125,14 @@ export class CodexAccount extends DurableObject<Env> {
     await this.ctx.storage.delete(["nonce", "nonceExpires", "device"]);
     return {done:true,message:"Connected. You can close this window."};
   }
-  async getAccessToken(): Promise<string> { const t=await this.ctx.storage.get<Tokens>("tokens"); if (!t) throw new Error("Codex account is not connected."); if (t.expires>Date.now()+60_000) return t.access; return this.#refresh ??= this.#refreshAccessToken(t).finally(() => { this.#refresh = undefined; }); }
+  async getAccessToken(): Promise<string> { const t=await this.ctx.storage.get<Tokens>("tokens"); if (!t) throw new Error("Codex account is not connected."); if (t.expires > Date.now() + MINIMUM_TOKEN_VALIDITY) return t.access; return this.#refresh ??= this.#refreshAccessToken(t).finally(() => { this.#refresh = undefined; }); }
   async getTokens(): Promise<Tokens> { await this.getAccessToken(); const tokens = await this.ctx.storage.get<Tokens>("tokens"); if (!tokens) throw new Error("Codex account is not connected."); return tokens; }
   async #refreshAccessToken(t: Tokens): Promise<string> { const r=await fetch(OAUTH_TOKEN_URL,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"refresh_token",refresh_token:t.refresh,client_id:CLIENT_ID}),signal:requestSignal()}); if(!r.ok) throw new Error("Codex credentials expired. Reconnect the account."); const v=await r.json() as {access_token:string,refresh_token:string,id_token?:string,expires_in:number}; const fresh={access:v.access_token,refresh:v.refresh_token,id:typeof v.id_token === "string" ? v.id_token : t.id,expires:Date.now()+v.expires_in*1000}; await this.ctx.storage.put("tokens",fresh); return fresh.access; }
   async alarm(){ await this.ctx.storage.delete(["nonce", "nonceExpires", "device", "reconnecting"]); }
   async revoke(){ await this.ctx.storage.deleteAll(); }
 }
 
-export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements GatekeeperUser {
+export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements ModelAuthAccount {
   #account() { return this.ctx.exports.CodexAccount.get(this.ctx.exports.CodexAccount.idFromString(this.ctx.props.accountObjectId)); }
   async describe(): Promise<AccountDescription> {
     const account = this.#account();
@@ -140,6 +141,7 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements
     return {displayName: accountLabel(identity), uniqueName: identity.accountId ?? this.ctx.props.accountObjectId, avatar:{url:"https://openai.com/favicon.ico"}};
   }
   async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
+  async getModelAuth(): Promise<{apiKey: string}> { return {apiKey: await this.getAccessToken()}; }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }
   async startResourceConfigurator(_resource:string): Promise<ResourceConfiguratorFrame> { throw new Error("Codex accounts do not provide resources."); }

@@ -1,6 +1,6 @@
 import { RpcStub } from "capnweb";
 import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame, ModelAuthAccountConnection } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -12,7 +12,6 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
-import { resolveOpenAICodexCredentials } from "./openai-codex.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -66,12 +65,13 @@ export const CLOUDFLARE_VENDOR_ID = "cloudflare";
 export type UserAiModelRecord = {
   profile: AiChatAuthorInfo;
   config: AiModelConfig;
+  connectedAccount?: ModelAuthAccountConnection;
 }
 
 export type UserChatContext = {
   profile: AiChatAuthorInfo;
   aiModel?: UserAiModelRecord;
-  quickModel?: AiModelConfig;
+  quickModel?: UserAiModelRecord;
 }
 
 type LoginSessionRecord = {
@@ -679,33 +679,43 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         result.aiModel = this.storage.aiModels.get(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
-      result.aiModel = {
-        ...result.aiModel,
-        config: await this.#resolveOpenAICodexCredentials(result.aiModel.config),
-      };
+      result.aiModel = this.#withConnectedAccount(result.aiModel);
     }
 
     // Resolve the quick model (used for lightweight tasks like title generation).
     if (gwConfig) {
       // In AI Gateway mode, always use the hardcoded quick model.
-      result.quickModel = gwConfig.getQuickModelConfig();
+      const quickConfig = gwConfig.getQuickModelConfig();
+      if (quickConfig) {
+        result.quickModel = {
+          profile: result.profile,
+          config: quickConfig,
+        };
+      }
     } else {
       let quickModelId = this.storage.quickModel.get();
       if (quickModelId) {
         let quickModel = this.storage.aiModels.get(quickModelId);
         if (quickModel) {
-          result.quickModel = await this.#resolveOpenAICodexCredentials(quickModel.config);
+          result.quickModel = this.#withConnectedAccount(quickModel);
         }
       }
     }
     return result;
   }
 
-  async #resolveOpenAICodexCredentials(config: AiModelConfig): Promise<AiModelConfig> {
-    return resolveOpenAICodexCredentials(
-        config,
-        id => this.storage.connectedAccounts.get(id),
-    );
+  #withConnectedAccount(model: UserAiModelRecord): UserAiModelRecord {
+    const id = model.config.connectedAccountId;
+    if (id === undefined) return model;
+    const account = this.storage.connectedAccounts.get(id);
+    if (!account) throw new Error("The selected model account is no longer connected.");
+    return {
+      ...model,
+      connectedAccount: {
+        account: account.account,
+        vendorId: account.vendorId,
+      },
+    };
   }
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {

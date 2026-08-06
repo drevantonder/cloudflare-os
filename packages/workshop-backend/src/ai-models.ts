@@ -4,6 +4,7 @@ import type {
   AnthropicMessagesCompat, Api, AssistantMessageEventStream, Context, Model, ModelCost,
   OpenAICompletionsCompat, ProviderHeaders, SimpleStreamOptions, StreamFunction,
 } from "@earendil-works/pi-ai";
+import { lazyStream } from "@earendil-works/pi-ai";
 import { stream as anthropicMessagesStream } from "@earendil-works/pi-ai/api/anthropic-messages";
 import { stream as googleGenerativeAiStream } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { stream as openaiCompletionsStream } from "@earendil-works/pi-ai/api/openai-completions";
@@ -14,7 +15,7 @@ import { CLOUDFLARE_WORKERS_AI_MODELS } from "@earendil-works/pi-ai/providers/cl
 import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
-import { ApprovalQueue, Gatekeeper, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
+import { ApprovalQueue, Gatekeeper, ModelAuthAccount, ModelAuthAccountConnection, ResourceDescription, stripTrailingSlashes } from '@gadgets/workshop-shared/gatekeeper';
 import { LanguageModelBinding } from "./ai-model-binding";
 import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
 import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LIMIT }
@@ -54,6 +55,7 @@ type ModelRoutingOptions = {
   sessionAffinity?: string;
   userGateway?: UserGatewayRouting;
   metadata?: GatewayMetadataContext;
+  connectedAccount?: ModelAuthAccountConnection;
 };
 
 /**
@@ -256,6 +258,9 @@ type HandleArgs = {
   // A null header value suppresses a default header ({Authorization: null, "x-api-key": null}
   // alongside cf-aig-authorization makes pi skip SDK auth entirely).
   apiKey?: string;
+  // Deferred account auth follows pi's lazy stream boundary: credentials are resolved only when
+  // the caller consumes this stream, rather than while selecting a model.
+  resolveAuth?: () => Promise<{apiKey: string}>;
   headers?: ProviderHeaders;
   // Structured gateway attribution; sent as `cf-aig-metadata` on gateway-routed requests only
   // (pi does not forward options.metadata to that header itself).
@@ -335,6 +340,12 @@ function makeHandle(args: HandleArgs): ModelHandle {
         // If Workers-binding-backed inference returns (upstream ask filed), inject a
         // fetch-to-binding shim here and relax the token requirements in ai-gateway.ts.
       };
+      if (args.resolveAuth) {
+        return lazyStream(model, async () => {
+          const auth = await args.resolveAuth!();
+          return streamFn(model, context, {...merged, ...auth});
+        });
+      }
       return streamFn(model, context, merged);
     },
   };
@@ -352,7 +363,7 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // Codex currently uses its direct SSE route through the optional egress binding.
   if (config.provider === "openai-codex") {
-    return getOpenAICodexModel(env, config, options.sessionAffinity);
+    return getOpenAICodexModel(env, config, options.connectedAccount, options.sessionAffinity);
   }
 
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
@@ -489,13 +500,16 @@ function getModelViaGateway(
 }
 
 function getOpenAICodexModel(env: Cloudflare.Env, config: AiModelConfig,
+                             connectedAccount: ModelAuthAccountConnection | undefined,
                              sessionAffinity?: string): ModelHandle {
-  if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
+  if (!connectedAccount || connectedAccount.vendorId !== "openai-codex") {
+    throw new Error("The selected OpenAI Codex account is no longer connected.");
+  }
   const model = catalogModel(config.provider, config.model);
   if (!model) throw new Error(`Unknown OpenAI Codex model "${config.model}".`);
   return makeHandle({
     model,
-    apiKey: config.apiToken,
+    resolveAuth: () => (connectedAccount.account as Fetcher<ModelAuthAccount>).getModelAuth(),
     fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
     transport: "sse",
     sessionAffinity,
@@ -626,6 +640,7 @@ export type LanguageModelGatekeeperProps = {
   config: AiModelConfig,
   initiator: AiChatAuthorInfo,
   metadata?: GatewayMetadataContext,
+  connectedAccount?: ModelAuthAccountConnection,
 };
 
 export class LanguageModelGatekeeper
@@ -660,6 +675,7 @@ export class LanguageModelGatekeeper
       : Promise<LanguageModelBinding> {
     let model = getModel(this.env, this.ctx.props.config, this.ctx.props.initiator, {
       metadata: this.ctx.props.metadata,
+      connectedAccount: this.ctx.props.connectedAccount,
     });
     return new LanguageModelBindingImpl(model);
   }

@@ -207,7 +207,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         provider: selection!.provider,
         model: finalModelId,
         apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && isOpenAICodex && accountId.trim() && { openAiCodexAccountId: Number(accountId) }),
+        ...(!gatewayMode && isOpenAICodex && accountId.trim() && { connectedAccountId: Number(accountId) }),
         ...(!gatewayMode && !isOpenAICodex && accountId.trim() && { accountId: accountId.trim() }),
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
