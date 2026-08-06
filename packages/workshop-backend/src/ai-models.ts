@@ -285,7 +285,10 @@ function makeHandle(args: HandleArgs): ModelHandle {
   const apiExtras: Record<string, unknown> =
       args.model.api === "anthropic-messages"
           ? (anthropicCompat?.forceAdaptiveThinking === true ? { thinkingEnabled: true } : {}) :
-      args.model.api === "openai-responses" ? { reasoningEffort: "medium" } : {};
+      args.model.api === "openai-responses" ? { reasoningEffort: "medium" } :
+      // Cloudflare's Worker WebSocket client can be blocked before the Codex backend receives
+      // the request. The same backend accepts the SSE transport from this runtime.
+      args.model.api === "openai-codex-responses" ? { transport: "sse" } : {};
 
   const handle: ModelHandle = {
     model: args.model,
