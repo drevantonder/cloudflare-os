@@ -64,7 +64,8 @@ async function preparePdf(bytes: Uint8Array, fileNumber: number): Promise<{
   parts: PreparedPart[];
   summary: PreparationSummary;
 }> {
-  const mupdf = await (mupdfReady ??= import("mupdf"));
+  const mupdf = await (mupdfReady ??=
+    import("./generated/lib.mupdf.js") as unknown as Promise<MuPdf>);
   const document = new mupdf.PDFDocument(bytes);
   try {
     if (document.needsPassword()) throw new TypeError("Encrypted PDFs are not supported.");
