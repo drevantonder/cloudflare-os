@@ -493,27 +493,6 @@ function getModelViaGateway(
 function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
                         sessionAffinity?: string): ModelHandle {
   const catalog = catalogModel(config.provider, config.model);
-  if (config.provider === "openai-codex") {
-    if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
-    const egress = env.OPENAI_CODEX_EGRESS;
-    return makeHandle({
-      model: catalog ?? {
-        id: config.model,
-        name: config.model,
-        api: "openai-codex-responses",
-        provider: "openai-codex",
-        baseUrl: "https://chatgpt.com/backend-api",
-        reasoning: true,
-        input: ["text", "image"],
-        cost: ZERO_COST,
-        ...modelTokenWindow(config, undefined),
-      },
-      apiKey: config.apiToken,
-      fetch: createOpenAICodexFetch(egress),
-      transport: "sse",
-      sessionAffinity,
-    });
-  }
   const window = modelTokenWindow(config, catalog);
   switch (config.provider) {
     case "anthropic":
@@ -576,6 +555,25 @@ function getModelDirect(env: Cloudflare.Env, config: AiModelConfig,
           thinkingLevelMap: catalog?.thinkingLevelMap,
         },
         apiKey: config.apiToken,
+        sessionAffinity,
+      });
+    case "openai-codex":
+      if (!config.apiToken) throw new Error("This OpenAI Codex model has no access token.");
+      return makeHandle({
+        model: catalog ?? {
+          id: config.model,
+          name: config.model,
+          api: "openai-codex-responses",
+          provider: "openai-codex",
+          baseUrl: "https://chatgpt.com/backend-api",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: ZERO_COST,
+          ...window,
+        },
+        apiKey: config.apiToken,
+        fetch: createOpenAICodexFetch(env.OPENAI_CODEX_EGRESS),
+        transport: "sse",
         sessionAffinity,
       });
     case "ollama":
