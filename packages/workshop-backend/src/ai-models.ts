@@ -266,12 +266,15 @@ type HandleArgs = {
 };
 
 const CODEX_ORIGINATOR = "codex_cli_rs";
-const CODEX_USER_AGENT = "codex_cli_rs/0.0.0 (Cloudflare OS)";
+const CODEX_VERSION = "0.0.1";
+const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_VERSION}`;
 
 function fetchCodex(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   headers.set("originator", CODEX_ORIGINATOR);
   headers.set("user-agent", CODEX_USER_AGENT);
+  headers.set("version", CODEX_VERSION);
+  headers.delete("OpenAI-Beta");
   return fetch(input, {...init, headers});
 }
 
