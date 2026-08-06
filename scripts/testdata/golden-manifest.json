@@ -506,6 +506,78 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/linear"
       }
     },
+    "gatekeeper-llm-vision": {
+      "bindings": [
+        {
+          "name": "CF_AI_GATEWAY",
+          "text": "$SECRET(CF_AI_GATEWAY)",
+          "type": "secret_text"
+        },
+        {
+          "name": "CF_AI_GATEWAY_ACCOUNT_ID",
+          "text": "$SECRET(CF_AI_GATEWAY_ACCOUNT_ID)",
+          "type": "secret_text"
+        },
+        {
+          "name": "CF_AI_GATEWAY_API_TOKEN",
+          "text": "$SECRET(CF_AI_GATEWAY_API_TOKEN)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-02-02",
+      "compatibilityFlags": [
+        "nodejs_compat"
+      ],
+      "inputs": [
+        {
+          "kind": "secret",
+          "label": "Cloudflare AI Gateway name",
+          "name": "CF_AI_GATEWAY"
+        },
+        {
+          "kind": "secret",
+          "label": "Cloudflare account ID",
+          "name": "CF_AI_GATEWAY_ACCOUNT_ID"
+        },
+        {
+          "help": "A token with AI Gateway Run permission. The gateway must have a stored Google AI Studio key.",
+          "kind": "secret",
+          "label": "Cloudflare AI Gateway API token",
+          "name": "CF_AI_GATEWAY_API_TOKEN"
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "llm-vision.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "VisionGatekeeper"
+          ],
+          "tag": "v1"
+        }
+      ],
+      "modules": [
+        {
+          "name": "llm-vision.js",
+          "r2Key": "blobs/modules/47ab6b6f6d9c2b5e4c7ec770a361934c34ddce3fc90a20ecd1b0c8872bb3dbb0",
+          "sha256": "47ab6b6f6d9c2b5e4c7ec770a361934c34ddce3fc90a20ecd1b0c8872bb3dbb0",
+          "size": 63,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "llm-vision",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/llm-vision"
+      }
+    },
     "gatekeeper-mcp": {
       "bindings": [],
       "compatibilityDate": "2026-02-02",
