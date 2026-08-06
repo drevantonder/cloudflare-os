@@ -9,6 +9,11 @@ import {
 import { GoogleDocSession, DocMetadata } from "./docs-types";
 import { GoogleDocsApi } from "./docs-api";
 import { GoogleSheetsApi } from "./sheets-api";
+import { GoogleDriveApi } from "./drive-api";
+import type {
+  GoogleDriveDownload, GoogleDriveItem, GoogleDriveListOptions, GoogleDrivePage,
+  GoogleDriveSession,
+} from "./drive-types";
 import type {
   GoogleSpreadsheetSession, SpreadsheetInfo, SpreadsheetRange, SpreadsheetValueMode,
 } from "./sheets-types";
@@ -32,11 +37,13 @@ import DOCS_TYPES_CODE from "./docs-types.txt";
 import BIGQUERY_TYPES_CODE from "./bigquery-types.txt";
 import CALENDAR_TYPES_CODE from "./calendar-types.txt";
 import SHEETS_TYPES_CODE from "./sheets-types.txt";
+import DRIVE_TYPES_CODE from "./drive-types.txt";
 import {
   BigQueryConfiguratorUI,
   CalendarConfiguratorUI,
   GmailConfiguratorUI,
   GoogleDocConfiguratorUI,
+  GoogleDriveConfiguratorUI,
   GoogleSheetsConfiguratorUI,
 } from "./google-configurators";
 import BIGQUERY_CONFIGURATOR_HTML from "./generated/bigquery-configurator-ui.txt";
@@ -44,6 +51,7 @@ import CALENDAR_CONFIGURATOR_HTML from "./generated/calendar-configurator-ui.txt
 import GMAIL_CONFIGURATOR_HTML from "./generated/gmail-configurator-ui.txt";
 import GOOGLE_DOC_CONFIGURATOR_HTML from "./generated/google-doc-configurator-ui.txt";
 import GOOGLE_SHEETS_CONFIGURATOR_HTML from "./generated/google-sheets-configurator-ui.txt";
+import GOOGLE_DRIVE_CONFIGURATOR_HTML from "./generated/google-drive-configurator-ui.txt";
 import GOOGLE_LOGO_SVG from "./google-logo.svg";
 import { obsContext } from "./observability.js";
 import { AccessTokenCache, AccessTokenRequest, ACCESS_TOKEN_EXPIRY_SAFETY_MS } from "./auth-retry";
@@ -221,6 +229,13 @@ const AUTH_SCOPES = IDENTITY_SCOPES;
 
 const BIGQUERY_HOST = "bigquery.googleapis.com";
 
+const GOOGLE_DRIVE_RESOURCE: SupportedResource = {
+  urlPattern: "https://drive.google.com/*",
+  title: "Google Drive",
+  description: "List, search, and download every file visible to your Google account.",
+  grantable: true,
+};
+
 const GMAIL_RESOURCE: SupportedResource = {
   urlPattern: "https://mail.google.com/*",
   title: "Gmail Mailbox",
@@ -267,6 +282,10 @@ const LEGACY_GRANTED_RESOURCE_URL_PATTERNS = [
 ];
 
 const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] = [
+  {
+    resource: GOOGLE_DRIVE_RESOURCE,
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+  },
   {
     resource: GMAIL_RESOURCE,
     scopes: [
@@ -436,12 +455,12 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
       url: "https://google.com",
       logo: { url: GOOGLE_LOGO_URL },
       color: "#e8f0fe",
-      tagline: "Draft replies, edit docs, read sheets, manage calendars, and analyze data",
+      tagline: "Draft replies, browse Drive, edit docs, read sheets, and analyze data",
       description:
-          "Connect your Google account to give Cloudflare OS access to Gmail, Google Docs, Google " +
-          "Sheets, Google Calendar, and BigQuery. Build agents that triage email, draft and edit " +
-          "documents, read spreadsheets, find focus time, schedule meetings, or run analytics " +
-          "queries on your data.",
+          "Connect your Google account to give Cloudflare OS access to Gmail, Google Drive, " +
+          "Google Docs, Google Sheets, Google Calendar, and BigQuery. Build agents that triage " +
+          "email, find and download files, edit documents, read spreadsheets, schedule meetings, " +
+          "or run analytics queries on your data.",
       providesAuth: true,
     };
   }
@@ -476,6 +495,7 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
   async getTypeScriptTypes(): Promise<string> {
     return [
       TYPES_CODE, DOCS_TYPES_CODE, SHEETS_TYPES_CODE, CALENDAR_TYPES_CODE, BIGQUERY_TYPES_CODE,
+      DRIVE_TYPES_CODE,
     ].join("\n");
   }
 }
@@ -832,6 +852,16 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }> {
     let parsed = new URL(url);
 
+    if (parsed.protocol === "https:" && parsed.hostname === "drive.google.com") {
+      let props: GoogleDriveGatekeeperImplProps = {
+        userObjectId: this.ctx.props.userObjectId,
+      };
+      return {
+        class: this.ctx.exports.GoogleDriveGatekeeperImpl({ props }),
+        resource: GOOGLE_DRIVE_RESOURCE,
+      };
+    }
+
     if (parsed.hostname === "docs.google.com" &&
         parsed.pathname.startsWith("/document/d/")) {
       // Extract document ID from URL path: /document/d/{documentId}/...
@@ -971,6 +1001,13 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       return {
         iframeHtml: GMAIL_CONFIGURATOR_HTML,
         ui: new RpcStub(new GmailConfiguratorUI()),
+      };
+    }
+
+    if (resourceUrlPattern === GOOGLE_DRIVE_RESOURCE.urlPattern) {
+      return {
+        iframeHtml: GOOGLE_DRIVE_CONFIGURATOR_HTML,
+        ui: new RpcStub(new GoogleDriveConfiguratorUI()),
       };
     }
 
@@ -1958,6 +1995,121 @@ export class GmailGatekeeperImpl extends DurableObject<Env, GmailGatekeeperImplP
   }
 
   async removeObserver(_id: string): Promise<void> {}
+}
+
+// =======================================================================================
+// Google Drive Gatekeeper
+// =======================================================================================
+
+type GoogleDriveGatekeeperImplProps = {
+  userObjectId: string;
+};
+
+@validateRpc()
+export class GoogleDriveGatekeeperImpl
+    extends DurableObject<Env, GoogleDriveGatekeeperImplProps>
+    implements Gatekeeper<GoogleDriveSession> {
+  #tokens = new AccessTokenCache(opts => {
+    let account = this.ctx.exports.UserAccount.get(
+      this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId),
+    );
+    return account.getAccessToken(opts);
+  });
+
+  async describe(): Promise<ResourceDescription> {
+    return {
+      url: "https://drive.google.com/drive/my-drive",
+      title: "Google Drive",
+      snippet: "All files visible to your Google account (read-only)",
+      suggestedBindingName: "GOOGLE_DRIVE",
+      tsType: "GoogleDriveSession",
+    };
+  }
+
+  async getTypeScriptTypes(): Promise<string> {
+    return DRIVE_TYPES_CODE;
+  }
+
+  async getAutoApprovableActions(): Promise<ActionKind[]> {
+    return [];
+  }
+
+  async startSession(approvalQueue: RpcStub<ApprovalQueue>): Promise<GoogleDriveSession> {
+    let api = new GoogleDriveApi(opts => this.#tokens.get(opts));
+    return new GoogleDriveSessionImpl(api, approvalQueue.dup());
+  }
+
+  async applyAction(_action: number): Promise<void> {
+    throw new Error("Google Drive is read-only and implements no actions.");
+  }
+
+  async rejectAction(_action: number): Promise<void> {
+    throw new Error("Google Drive is read-only and implements no actions.");
+  }
+
+  revertAction(_action: number): Promise<void> {
+    throw new Error("Google Drive is read-only and implements no actions.");
+  }
+
+  async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {
+    throw new Error(
+      "Account-wide Google Drive data cannot be shared with other users and may only be " +
+      "observed by its owner.",
+    );
+  }
+
+  async removeObserver(_id: string): Promise<void> {}
+}
+
+@validateRpc()
+class GoogleDriveSessionImpl extends RpcTarget implements GoogleDriveSession {
+  constructor(
+    private api: GoogleDriveApi,
+    private approvalQueue: RpcStub<ApprovalQueue>,
+  ) {
+    super();
+  }
+
+  [Symbol.dispose](): void {
+    this.approvalQueue[Symbol.dispose]();
+  }
+
+  async list(options?: GoogleDriveListOptions): Promise<GoogleDrivePage> {
+    let page = await this.api.list(options);
+    let scope = options?.parentId ? "a Google Drive folder" : "Google Drive";
+    let operation = options?.query ? "Searched" : "Listed";
+    await this.approvalQueue.authorizeObservation({
+      title: `${operation} ${scope}`,
+      description: `${operation} ${scope} and returned ${page.items.length} item(s).`,
+      prohibitAllSharing: true,
+    });
+    return page;
+  }
+
+  async get(itemId: string): Promise<GoogleDriveItem> {
+    let item = await this.api.get(itemId);
+    await this.approvalQueue.authorizeObservation({
+      title: "Read Google Drive file metadata",
+      description: `Read metadata for "${item.name}".`,
+      prohibitAllSharing: true,
+    });
+    return item;
+  }
+
+  async download(itemId: string, exportMimeType?: string): Promise<GoogleDriveDownload> {
+    let download = await this.api.download(itemId, exportMimeType);
+    try {
+      await this.approvalQueue.authorizeObservation({
+        title: "Download a Google Drive file",
+        description: `Downloaded "${download.item.name}" as ${download.contentType}.`,
+        prohibitAllSharing: true,
+      });
+    } catch (error) {
+      await download.content.cancel().catch(() => {});
+      throw error;
+    }
+    return download;
+  }
 }
 
 // =======================================================================================
