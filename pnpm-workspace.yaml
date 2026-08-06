@@ -32,3 +32,6 @@ allowBuilds:
   protobufjs: true
   sharp: true
   workerd: true
+
+patchedDependencies:
+  '@earendil-works/pi-ai': patches/@earendil-works__pi-ai.patch

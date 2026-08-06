@@ -262,21 +262,7 @@ type HandleArgs = {
   gatewayMetadata?: GatewayMetadata;
   sessionAffinity?: string;
   aiGatewayLogRoute?: AiGatewayLogRoute;
-  fetch?: typeof fetch;
 };
-
-const CODEX_ORIGINATOR = "codex_cli_rs";
-const CODEX_VERSION = "0.0.1";
-const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_VERSION}`;
-
-function fetchCodex(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  headers.set("originator", CODEX_ORIGINATOR);
-  headers.set("user-agent", CODEX_USER_AGENT);
-  headers.set("version", CODEX_VERSION);
-  headers.delete("OpenAI-Beta");
-  return fetch(input, {...init, headers});
-}
 
 function makeHandle(args: HandleArgs): ModelHandle {
   const streamFn = API_STREAMS[args.model.api];
@@ -300,9 +286,7 @@ function makeHandle(args: HandleArgs): ModelHandle {
       args.model.api === "anthropic-messages"
           ? (anthropicCompat?.forceAdaptiveThinking === true ? { thinkingEnabled: true } : {}) :
       args.model.api === "openai-responses" ? { reasoningEffort: "medium" } :
-      // Cloudflare's Worker WebSocket client can be blocked before the Codex backend receives
-      // the request. The same backend accepts the SSE transport from this runtime.
-      args.model.api === "openai-codex-responses" ? { transport: "sse" } : {};
+      {};
 
   const handle: ModelHandle = {
     model: args.model,
@@ -327,7 +311,6 @@ function makeHandle(args: HandleArgs): ModelHandle {
             ? apiExtras
             : args.model.api === "anthropic-messages" ? { thinkingEnabled: false } : {}),
         ...options,
-        ...(args.fetch ? { fetch: args.fetch } : {}),
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         // Session affinity: pi only sends it when caching isn't "none" (fine for us).
@@ -542,7 +525,6 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
           compat: catalog?.compat,
         },
         apiKey: config.apiToken,
-        fetch: fetchCodex,
         sessionAffinity,
       });
     case "cloudflare": {
