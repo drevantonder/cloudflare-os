@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
 import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, ConnectedAccountsSubscriber, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
+import { VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
 import { RpcStub, RpcTarget } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 
@@ -16,23 +17,28 @@ type SelectionType =
   | { type: 'suggested', provider: AiModelProvider, modelId: string, displayName: string }
   | { type: 'custom', provider: AiModelProvider }
 
-const PROVIDER_LABELS: Record<AiModelProvider, string> = {
+const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
   cloudflare: 'Cloudflare Workers AI',
   ollama: 'Ollama',
-  'openai-codex': 'OpenAI Codex',
 }
 
 // Placeholder hinting at the shape of each provider's API token.
-const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
+const API_TOKEN_PLACEHOLDERS: Record<string, string> = {
   anthropic: 'sk-ant-...',
   openai: 'sk-...',
   google: 'AIza...',
   cloudflare: 'Cloudflare API token',
   ollama: '(optional)',
-  'openai-codex': '',
+}
+
+type ModelCatalog = Record<string, {name: string, contextWindow: number, outputLimit?: number}>
+type ConnectedModelProvider = {
+  displayName: string
+  models: ModelCatalog
+  accounts: {id: number, name: string}[]
 }
 
 // Example used in the custom-model placeholders for providers that have no suggested models
@@ -40,8 +46,8 @@ const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
 const FALLBACK_EXAMPLE_MODEL = { modelId: 'gemma4:31b', name: 'Gemma 4 31B' }
 
 // Pick an example model to show in the custom-model placeholders for the given provider.
-function exampleModel(provider: AiModelProvider): { modelId: string, name: string } {
-  const first = Object.entries(SUGGESTED_MODELS[provider])[0]
+function exampleModel(provider: AiModelProvider, models: Record<string, ModelCatalog>): { modelId: string, name: string } {
+  const first = Object.entries(models[provider] ?? {})[0]
   return first ? { modelId: first[0], name: first[1].name } : FALLBACK_EXAMPLE_MODEL
 }
 
@@ -51,29 +57,30 @@ function encodeSelection(provider: AiModelProvider, modelId?: string): string {
 }
 
 // Decode a Select value back into a SelectionType.
-function decodeSelection(value: string): SelectionType {
+function decodeSelection(value: string, models: Record<string, ModelCatalog>): SelectionType {
   if (value.startsWith('other-')) {
     return { type: 'custom', provider: value.substring(6) as AiModelProvider }
   }
   const colonIndex = value.indexOf(':')
   const provider = value.substring(0, colonIndex) as AiModelProvider
   const modelId = value.substring(colonIndex + 1)
-  const displayName = SUGGESTED_MODELS[provider][modelId].name
+  const displayName = models[provider]?.[modelId]?.name ?? modelId
   return { type: 'suggested', provider, modelId, displayName }
 }
 
 // Build the flat list of options for the Select dropdown.
-function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null) {
+function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null,
+                      models: Record<string, ModelCatalog>, labels: Record<string, string>) {
   const options: { value: string; label: string; provider: string }[] = []
-  const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
+  const providerOrder = Object.keys(models)
 
   for (const provider of providerOrder) {
-    if (gatewayMode && provider === 'openai-codex') continue
+    if (gatewayMode && !(provider in SUGGESTED_MODELS)) continue
     if (enabledProviders && !enabledProviders.has(provider)) continue
 
     // In gateway mode, suggested models are already built-in, so don't list them.
     if (!gatewayMode) {
-      for (const [modelId, model] of Object.entries(SUGGESTED_MODELS[provider])) {
+      for (const [modelId, model] of Object.entries(models[provider] ?? {})) {
         options.push({
           value: encodeSelection(provider, modelId),
           label: model.name,
@@ -84,7 +91,7 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
 
     options.push({
       value: encodeSelection(provider),
-      label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
+      label: `Other ${labels[provider] || provider}...`,
       provider,
     })
   }
@@ -105,7 +112,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const [apiToken, setApiToken] = useState('')
   const [accountId, setAccountId] = useState('')
   const [apiUrl, setApiUrl] = useState('')
-  const [codexAccounts, setCodexAccounts] = useState<{id: number, name: string}[]>([])
+  const [connectedModelProviders, setConnectedModelProviders] = useState<Record<string, ConnectedModelProvider>>({})
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -135,10 +142,21 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
   useEffect(() => {
     class Subscriber extends RpcTarget implements ConnectedAccountsSubscriber {
-      add(id: number, description: {displayName?: string, uniqueName?: string}, _vendor: unknown, _resources: unknown[], valid: boolean, vendorId: string) {
-        if (vendorId === 'openai_codex' && valid) setCodexAccounts(items => [...items.filter(item => item.id !== id), {id, name: description.displayName ?? description.uniqueName ?? 'OpenAI Codex'}])
+      add(id: number, description: {displayName?: string, uniqueName?: string}, vendor: VendorDescription, _resources: unknown[], valid: boolean, _vendorId: string) {
+        const provider = vendor.modelProvider
+        if (!provider || !valid) return
+        setConnectedModelProviders(items => ({
+          ...items,
+          [provider.id]: {
+            displayName: provider.displayName,
+            models: provider.models,
+            accounts: [...(items[provider.id]?.accounts ?? []).filter(account => account.id !== id), {
+              id, name: description.displayName ?? description.uniqueName ?? provider.displayName,
+            }],
+          },
+        }))
       }
-      remove(id: number) { setCodexAccounts(items => items.filter(item => item.id !== id)) }
+      remove(id: number) { setConnectedModelProviders(items => Object.fromEntries(Object.entries(items).map(([provider, value]) => [provider, {...value, accounts: value.accounts.filter(account => account.id !== id)}]))) }
       ready() {}
     }
     const subscriber = new Subscriber()
@@ -151,10 +169,17 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     return () => { disposed = true; subscription?.[Symbol.dispose]() }
   }, [authenticatedApi])
 
+  const modelCatalogs: Record<string, ModelCatalog> = {...SUGGESTED_MODELS}
+  const providerLabels: Record<string, string> = {...PROVIDER_LABELS}
+  for (const [id, provider] of Object.entries(connectedModelProviders)) {
+    modelCatalogs[id] = provider.models
+    providerLabels[id] = provider.displayName
+  }
+
   const handleModelSelect = (value: string) => {
     setSelectValue(value)
     setErrors({})
-    const sel = decodeSelection(value)
+    const sel = decodeSelection(value, modelCatalogs)
     setSelection(sel)
 
     if (sel.type === 'custom') {
@@ -183,13 +208,13 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
     const isOllama = selection?.provider === 'ollama'
     const isCloudflare = selection?.provider === 'cloudflare'
-    const isCodex = selection?.provider === 'openai-codex'
+    const isConnectedProvider = selection ? connectedModelProviders[selection.provider] !== undefined : false
     const showCredentials = !gatewayMode
 
-    if (showCredentials && selection && !isOllama && !isCodex && !apiToken.trim()) {
+    if (showCredentials && selection && !isOllama && !isConnectedProvider && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
     }
-    if (showCredentials && isCodex && !accountId.trim()) newErrors.accountId = 'Connect and select an OpenAI Codex account'
+    if (showCredentials && isConnectedProvider && !accountId.trim()) newErrors.accountId = 'Connect and select an account'
 
     if (showCredentials && isCloudflare && !accountId.trim()) {
       newErrors.accountId = 'Please enter your Cloudflare account ID'
@@ -211,11 +236,11 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
       const isSuggested = selection!.type === 'suggested'
       const finalModelId = isSuggested ? selection!.modelId : modelId.trim()
       const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
-      const isCodex = selection!.provider === 'openai-codex'
+      const isConnectedProvider = connectedModelProviders[selection!.provider] !== undefined
 
       const profile: AiChatAuthorInfo = {
         type: 'agent',
-        id: isCodex ? `${finalModelId}:codex:${accountId.trim()}` : finalModelId,
+        id: isConnectedProvider ? `${finalModelId}:${selection!.provider}:${accountId.trim()}` : finalModelId,
         name: finalDisplayName,
       }
 
@@ -223,8 +248,8 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         provider: selection!.provider,
         model: finalModelId,
         apiToken: gatewayMode ? '' : apiToken.trim(),
-        ...(!gatewayMode && isCodex && accountId.trim() && { codexAccountId: Number(accountId) }),
-        ...(!gatewayMode && !isCodex && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!gatewayMode && isConnectedProvider && accountId.trim() && { connectedAccountId: Number(accountId) }),
+        ...(!gatewayMode && !isConnectedProvider && accountId.trim() && { accountId: accountId.trim() }),
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
@@ -239,12 +264,12 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     }
   }
 
-  const options = buildOptions(gatewayMode, enabledProviders)
+  const options = buildOptions(gatewayMode, enabledProviders, modelCatalogs, providerLabels)
   const showCustomFields = selection?.type === 'custom'
-  const example = selection ? exampleModel(selection.provider) : null
+  const example = selection ? exampleModel(selection.provider, modelCatalogs) : null
   const isOllama = selection?.provider === 'ollama'
   const isCloudflare = selection?.provider === 'cloudflare'
-  const isCodex = selection?.provider === 'openai-codex'
+  const connectedProvider = selection ? connectedModelProviders[selection.provider] : undefined
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
@@ -285,7 +310,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
                   <div className="h-px bg-kumo-line my-1 mx-2" />
                 )}
                 <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle select-none">
-                  {PROVIDER_LABELS[group.provider as AiModelProvider] || group.provider}
+                  {providerLabels[group.provider] || group.provider}
                 </div>
                 {group.items.map(opt => (
                   <Select.Option key={opt.value} value={opt.value}>
@@ -334,14 +359,14 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             />
           )}
 
-          {showCredentials && isCodex && (
-            <Select label="OpenAI Codex account" value={accountId || undefined} onValueChange={(v) => { setAccountId(v as string); setErrors(prev => ({ ...prev, accountId: '' })) }} error={errors.accountId} renderValue={(value) => codexAccounts.find(account => String(account.id) === value)?.name ?? 'Select an account'}>
-              {codexAccounts.map(account => <Select.Option key={account.id} value={String(account.id)}>{account.name}</Select.Option>)}
+          {showCredentials && connectedProvider && (
+            <Select label={`${connectedProvider.displayName} account`} value={accountId || undefined} onValueChange={(v) => { setAccountId(v as string); setErrors(prev => ({ ...prev, accountId: '' })) }} error={errors.accountId} renderValue={(value) => connectedProvider.accounts.find(account => String(account.id) === value)?.name ?? 'Select an account'}>
+              {connectedProvider.accounts.map(account => <Select.Option key={account.id} value={String(account.id)}>{account.name}</Select.Option>)}
             </Select>
           )}
 
           {/* API Token */}
-          {showCredentials && selection && !isCodex && (
+          {showCredentials && selection && !connectedProvider && (
             <SensitiveInput
               label="API Token"
               placeholder={API_TOKEN_PLACEHOLDERS[selection.provider]}
@@ -350,7 +375,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
                   ? 'Optional for local Ollama access'
                   : isCloudflare
                   ? 'An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)'
-                  : `Your ${PROVIDER_LABELS[selection.provider]} API token for billing`
+                  : `Your ${providerLabels[selection.provider]} API token for billing`
               }
               value={apiToken}
               onValueChange={(v) => { setApiToken(v); setErrors(prev => ({ ...prev, apiToken: '' })) }}
@@ -373,7 +398,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
           )}
 
           {/* Advanced Settings for non-Ollama, non-Cloudflare providers */}
-          {showCredentials && selection && !isOllama && !isCloudflare && (
+          {showCredentials && selection && !isOllama && !isCloudflare && !connectedProvider && (
             <Collapsible.Root
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}

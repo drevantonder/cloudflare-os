@@ -1,5 +1,6 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import type { AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorInterface, ResourceConfiguratorFrame, SupportedResource, VendorDescription } from "@gadgets/workshop-shared/gatekeeper";
+import { OPENAI_CODEX_MODEL_PROVIDER, OPENAI_CODEX_PROVIDER_ID } from "./model-provider.js";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const USER_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -73,7 +74,7 @@ export default {
 
 export class GatekeeperVendor extends WorkerEntrypoint<Env> implements GatekeeperVendorInterface {
   status() { return "OpenAI Codex Gatekeeper"; }
-  async describe(): Promise<VendorDescription> { return {displayName:"OpenAI Codex", url:"https://openai.com/codex/", tagline:"Use your ChatGPT Codex account", description:"Connect a ChatGPT account with the Codex device authorization flow."}; }
+  async describe(): Promise<VendorDescription> { return {displayName:"OpenAI Codex", url:"https://openai.com/codex/", tagline:"Use your ChatGPT Codex account", description:"Connect a ChatGPT account with the Codex device authorization flow.", modelProvider: {id: OPENAI_CODEX_PROVIDER_ID, displayName: OPENAI_CODEX_MODEL_PROVIDER.displayName, models: OPENAI_CODEX_MODEL_PROVIDER.models}}; }
   async connectAccount(callback: Fetcher<GatekeeperConnectCallback>, _options?: GatekeeperConnectOptions): Promise<{url:string}> {
     const id = this.ctx.exports.CodexAccount.newUniqueId();
     const account = this.ctx.exports.CodexAccount.get(id);
@@ -140,6 +141,9 @@ export class CodexGatekeeperUser extends WorkerEntrypoint<Env, Props> implements
     return {displayName: accountLabel(identity), uniqueName: identity.accountId ?? this.ctx.props.accountObjectId, avatar:{url:"https://openai.com/favicon.ico"}};
   }
   async getAccessToken(): Promise<string> { return this.#account().getAccessToken(); }
+  async getModelProviderCredentials(): Promise<{provider: string, apiToken: string}> {
+    return { provider: OPENAI_CODEX_PROVIDER_ID, apiToken: await this.getAccessToken() };
+  }
   async getSupportedResources(): Promise<SupportedResource[]> { return []; }
   async getGatekeeperClassFor(_url:string): Promise<{class:DurableObjectClass<Gatekeeper<any>>,resource:SupportedResource}> { throw new Error("Codex accounts do not provide resources."); }
   async startResourceConfigurator(_resource:string): Promise<ResourceConfiguratorFrame> { throw new Error("Codex accounts do not provide resources."); }

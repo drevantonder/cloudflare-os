@@ -3,6 +3,15 @@
 This gatekeeper connects a ChatGPT account with OpenAI's Codex device authorization flow. The
 Workshop uses the resulting short-lived access token with Pi's direct OpenAI Codex provider.
 
+## Cloudflare OS integration
+
+The package exports its model-provider adapter at
+`@gadgets/openai-codex-gatekeeper/model-provider`. It owns the Codex model catalog, Pi transport,
+and request/error handling. Cloudflare OS only registers that adapter at its generic direct-model
+provider seam; connected accounts advertise their provider and models through the shared
+`modelProvider` capability. This keeps OpenAI-specific OAuth, egress, and transport behavior out
+of the Workshop kernel and model picker.
+
 ## Cloudflare Workers egress
 
 Cloudflare adds a `CF-Worker` header to public Internet requests made with ordinary Worker
@@ -37,5 +46,5 @@ account errors are preserved unchanged.
 For local development against the remote VPC Network binding, start the development server with:
 
 ```sh
-pnpm dev-server -- --use-openai-codex-egress
+VPC_NETWORK_BINDING=OPENAI_CODEX_EGRESS pnpm dev-server
 ```

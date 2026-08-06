@@ -34,6 +34,14 @@ export type AvatarImage = {
   url: string;
 }
 
+// A model catalog supplied by a connected-account gatekeeper. The Workshop uses this metadata to
+// render its picker; provider-specific request construction stays in the gatekeeper package.
+export type ModelProviderDescription = {
+  id: string;
+  displayName: string;
+  models: Record<string, { name: string; contextWindow: number; outputLimit?: number }>;
+};
+
 // Describes a connected GatekeeperVendor, for display purposes.
 export type VendorDescription = {
   // Human-readable name of the service, e.g. "Google", "GitHub", etc.
@@ -68,6 +76,10 @@ export type VendorDescription = {
   // The account — not the vendor — declares whether it provides an agent singleton and/or a
   // management UI (see AccountDescription.singleton / .providesUi).
   autoProvisionsAccount?: boolean;
+
+  // If set, connected accounts from this vendor can provide credentials for an AI model provider.
+  // The account exposes ModelProviderGatekeeperUser.getModelProviderCredentials() on demand.
+  modelProvider?: ModelProviderDescription;
 }
 
 // Per-open context the Workshop passes to GatekeeperUser.startAppUi(). `isAdmin` is supplied fresh
@@ -575,9 +587,9 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   // - Query whether account has scope to access a particular URL.
 }
 
-/** A connected OpenAI Codex account that can mint a short-lived model access token. */
-export interface OpenAiCodexGatekeeperUser extends GatekeeperUser {
-  getAccessToken(): Promise<string>;
+/** A connected account that can mint a short-lived model-provider access token. */
+export interface ModelProviderGatekeeperUser extends GatekeeperUser {
+  getModelProviderCredentials(): Promise<{ provider: string; apiToken: string }>;
 }
 
 // Opaque object representing the capability to verify whether a particular user is able to access

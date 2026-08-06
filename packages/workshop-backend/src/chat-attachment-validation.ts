@@ -32,14 +32,13 @@ const isTextImageOrPdfMime = (mimeType: string) =>
 // image part and are bridged to a provider's native document input where one exists: Gemini takes
 // application/pdf inline data as-is, and Anthropic/OpenAI payloads are rewritten in flight (see
 // chat-attachment-pdf.ts). Workers AI and Ollama chat endpoints have no document input at all.
-const ATTACHMENT_SUPPORT_BY_PROVIDER = {
+const ATTACHMENT_SUPPORT_BY_PROVIDER: Partial<Record<AiModelProvider, (mimeType: string) => boolean>> = {
   anthropic: isTextImageOrPdfMime,
   openai: isTextImageOrPdfMime,
   google: isTextImageOrPdfMime,
-  "openai-codex": isTextImageOrPdfMime,
   cloudflare: isTextOrImageMime,
   ollama: isTextOrImageMime,
-} satisfies Record<AiModelProvider, (mimeType: string) => boolean>;
+};
 
 function sanitizeChatAttachmentMimeType(mimeType: string | undefined): string {
   if (!mimeType || /[\r\n]/.test(mimeType)) return "application/octet-stream";
@@ -67,7 +66,9 @@ export function assertChatAttachmentSupportedByProvider(
     throw new Error("Unsupported file type");
   }
 
-  if (ATTACHMENT_SUPPORT_BY_PROVIDER[provider](mimeType)) return;
+  // External model-provider packages are responsible for their own request conversion. The
+  // portable default matches the rich input Pi exposes: text, images, and bridged PDFs.
+  if ((ATTACHMENT_SUPPORT_BY_PROVIDER[provider] ?? isTextImageOrPdfMime)(mimeType)) return;
 
   throw new Error("Unsupported file type");
 }

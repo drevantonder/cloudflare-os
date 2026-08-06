@@ -6,11 +6,10 @@
 // Flags:
 //   --use-workers-ai-binding   Include the Workers AI binding in
 //                               workshop-backend (requires Cloudflare login).
-//   --use-openai-codex-egress  Route OpenAI Codex inference through the remote
-//                               cf1:network VPC binding (requires Cloudflare login).
 //
 // Env:
 //   VITE_BACKEND_HOST=localhost:9000  Also pass --port 9000 to wrangler dev.
+//   VPC_NETWORK_BINDING=NAME          Include remote cf1:network under NAME.
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
@@ -46,7 +45,7 @@ function loadDevVars() {
 loadDevVars();
 
 const useWorkersAi = process.argv.includes("--use-workers-ai-binding");
-const useOpenAiCodexEgress = process.argv.includes("--use-openai-codex-egress");
+const vpcNetworkBinding = process.env.VPC_NETWORK_BINDING;
 
 // Generate the format blueprint module before Wrangler tries to bundle the backend. The output is
 // gitignored, so it will not exist on a clean checkout.
@@ -274,9 +273,9 @@ for (const gk of gatekeepers) {
     config.ai = { binding: "WORKERS_AI" };
   }
 
-  if (useOpenAiCodexEgress) {
+  if (vpcNetworkBinding) {
     config.vpc_networks = [{
-      binding: "OPENAI_CODEX_EGRESS",
+      binding: vpcNetworkBinding,
       network_id: "cf1:network",
       remote: true,
     }];

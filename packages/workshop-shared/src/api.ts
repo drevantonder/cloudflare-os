@@ -917,7 +917,7 @@ export type CloudflareAccountOption = {
 };
 
 // Supported AI providers.
-export type AiModelProvider = "openai" | "openai-codex" | "anthropic" | "google" | "cloudflare" | "ollama";
+export type AiModelProvider = string;
 
 // Information about the AI gateway configuration. Returned by `AuthenticatedApi.getAiConfig()`.
 export type AiGatewayInfo = {
@@ -942,8 +942,8 @@ export type AiModelConfig = {
   // provider "cloudflare" (whose REST endpoint is account-scoped); unused for other providers.
   accountId?: string;
 
-  // Connected OpenAI Codex account. Required for provider "openai-codex".
-  codexAccountId?: number;
+  // Connected account that supplies credentials for a model provider.
+  connectedAccountId?: number;
 
   // URL of the API. If not specified, use the default for the provider. Overriding the URL is
   // useful in order to use AI proxy products like Cloudflare's AI gateway, or even to use an
@@ -959,7 +959,7 @@ export const WORKERS_AI_OUTPUT_LIMIT = 32768;
 // `outputLimit`, when present, is both the requested response cap and the space reserved for it,
 // leaving the remainder as the prompt budget context compaction sizes against.
 export const SUGGESTED_MODELS: Record<
-  AiModelProvider,
+  string,
   Record<string, {name: string, contextWindow: number, outputLimit?: number}>
 > = {
   "cloudflare": {
@@ -982,11 +982,6 @@ export const SUGGESTED_MODELS: Record<
     "gpt-5.6-sol": {name: "GPT 5.6 Sol", contextWindow: 1050000, outputLimit: 128000},
     "gpt-5.6-luna": {name: "GPT 5.6 Luna", contextWindow: 1050000, outputLimit: 128000},
     "gpt-5.6-terra": {name: "GPT 5.6 Terra", contextWindow: 1050000, outputLimit: 128000},
-  },
-  "openai-codex": {
-    "gpt-5.6-sol": {name: "GPT 5.6 Sol", contextWindow: 272000, outputLimit: 128000},
-    "gpt-5.6-luna": {name: "GPT 5.6 Luna", contextWindow: 272000, outputLimit: 128000},
-    "gpt-5.6-terra": {name: "GPT 5.6 Terra", contextWindow: 272000, outputLimit: 128000},
   },
   "google": {
     "gemini-3.6-flash": {name: "Gemini 3.6 Flash", contextWindow: 1048576},
