@@ -3,7 +3,7 @@
 // This file was largely vibe-coded based on an interface spec.
 
 import { AccountDescription } from "@gadgets/workshop-shared/gatekeeper";
-import { GmailThreadInfo, EmailAddress } from "./types";
+import { GmailThreadInfo, EmailAddress, GmailAttachment } from "./types";
 import { createMimeMessage } from "mimetext/browser";
 import PostalMime, { addressParser } from "postal-mime";
 import { AccessTokenProvider, fetchWithAuthRetry } from "./auth-retry";
@@ -747,6 +747,7 @@ export class GmailApi {
   async parseMessage(message: GmailMessageRaw): Promise<{
     info: GmailMessageInfoRaw;
     content: { text?: string; html?: string };
+    attachments: GmailAttachment[];
   }> {
     const parsed = await parseMimeMessage(message.raw);
 
@@ -767,6 +768,13 @@ export class GmailApi {
         ...(parsed.text != null ? { text: parsed.text.trim() } : {}),
         ...(parsed.html != null ? { html: parsed.html.trim() } : {}),
       },
+      attachments: parsed.attachments.map(attachment => ({
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        disposition: attachment.disposition,
+        ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
+        content: new Blob([attachment.content], { type: attachment.mimeType }),
+      })),
     };
   }
 

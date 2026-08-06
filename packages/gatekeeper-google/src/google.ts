@@ -4,7 +4,8 @@ import { GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperV
 import { exchangeAuthCode, getAccessToken, getGoogleAccountDescription, getGoogleVerifiedEmail, GmailApi, GmailMessageRaw, GmailOutboundMessage, GoogleAccessToken, normalizeEmailRecipients, revokeGoogleToken } from "./google-api";
 import {
   GmailSession, GmailThread, GmailMessage,
-  GmailThreadInfo, GmailThreadEntry, GmailMessageInfo, GmailLabel, GmailSystemLabel, EmailContent
+  GmailThreadInfo, GmailThreadEntry, GmailMessageInfo, GmailLabel, GmailSystemLabel, EmailContent,
+  GmailAttachment,
 } from "./types";
 import { GoogleDocSession, DocMetadata } from "./docs-types";
 import { GoogleDocsApi } from "./docs-api";
@@ -1690,6 +1691,18 @@ class GmailMessageStub extends RpcTarget implements GmailMessage {
     });
 
     return content;
+  }
+
+  async getAttachments(): Promise<GmailAttachment[]> {
+    const raw = await this.#getRaw();
+    const { info, attachments } = await this.#ctx.gmailApi.parseMessage(raw);
+
+    await this.#ctx.approvalQueue.authorizeObservation({
+      title: sanitizeApprovalTitle(`Read attachments: ${info.subject}`),
+      description: `Get ${attachments.length} attachment(s) from message ${this.#messageId}.`,
+    });
+
+    return attachments;
   }
 
   async reply(body: string): Promise<void> {
