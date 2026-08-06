@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiChatAuthorInfo, AiModelConfig } from "@gadgets/workshop-shared/api";
 import { getModel, type ModelHandle } from "../src/ai-models.js";
 
@@ -363,6 +363,47 @@ describe("getModel direct routing (no gateway)", () => {
       }, INITIATOR);
       expect(handle.model.baseUrl).toBe("http://my-ollama:11434/v1");
     }
+  });
+});
+
+describe("OpenAI Codex request authentication", () => {
+  beforeEach(() => {
+    capturedRequests.length = 0;
+  });
+
+  it("resolves account auth only when a stream starts", async () => {
+    const resolveAuth = vi.fn(async () => ({
+      apiKey: `header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xIn19.signature-${resolveAuth.mock.calls.length}`,
+      headers: { "x-codex-account": "connected" },
+      baseUrl: "https://codex.example/backend-api",
+    }));
+    const handle = getModel(env({CF_AI_GATEWAY: undefined}), {
+      provider: "openai-codex",
+      model: "gpt-5.6-sol",
+      apiToken: "",
+      connectedAccountId: 7,
+    }, INITIATOR, {resolveAuth});
+
+    expect(resolveAuth).not.toHaveBeenCalled();
+
+    await captureRequest(handle);
+    await captureRequest(handle);
+
+    expect(resolveAuth).toHaveBeenCalledTimes(2);
+    expect(capturedRequests).toHaveLength(2);
+    expect(capturedRequests[0].url).toBe("https://codex.example/backend-api/codex/responses");
+    expect(capturedRequests[0].headers.get("authorization")).toContain("Bearer header.");
+    expect(capturedRequests[0].headers.get("authorization")).not.toBe(capturedRequests[1].headers.get("authorization"));
+    expect(capturedRequests[0].headers.get("x-codex-account")).toBe("connected");
+  });
+
+  it("requires a request-time account resolver", () => {
+    expect(() => getModel(env({CF_AI_GATEWAY: undefined}), {
+      provider: "openai-codex",
+      model: "gpt-5.6-sol",
+      apiToken: "",
+      connectedAccountId: 7,
+    }, INITIATOR)).toThrow("selected OpenAI Codex account");
   });
 });
 

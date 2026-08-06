@@ -575,19 +575,20 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   // - Query whether account has scope to access a particular URL.
 }
 
-// Narrow request-auth capability implemented by accounts that back an AI model. The account owns
-// refresh-token storage; callers receive only the short-lived request credential.
-export interface ModelAuthAccount extends GatekeeperUser {
-  // Resolve authentication immediately before an inference request is started.
-  getModelAuth(): Promise<{apiKey: string}>;
+/** Request authentication for one model invocation, structurally matching pi's `ModelAuth`. */
+export interface ModelRequestAuth {
+  /** Optional provider API token. */
+  apiKey?: string;
+  /** Optional provider-specific request headers. */
+  headers?: Record<string, string | null>;
+  /** Optional provider-specific API base URL. */
+  baseUrl?: string;
 }
 
-/** A connected account capable of supplying request-time model authentication. */
-export interface ModelAuthAccountConnection {
-  /** The account capability. Credentials remain inside its gatekeeper. */
-  account: Fetcher;
-  /** The gatekeeper vendor identifier used to validate a provider's selected account. */
-  vendorId: string;
+/** Narrow request-auth capability implemented by accounts that back AI models. */
+export interface ModelAuthAccount extends WorkerEntrypoint {
+  /** Resolve request authentication immediately before an inference request starts. */
+  getModelAuth(): Promise<ModelRequestAuth>;
 }
 
 // Opaque object representing the capability to verify whether a particular user is able to access
